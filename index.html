@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0d18">
+  <title>Аксіома Банк</title>
+
+  <!-- Та сама Firebase (проєкт nye-slotok) і ті самі акаунти, що в SlotOK -->
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ══════════════ ВХІД ══════════════ -->
+  <div id="authScreen" class="auth-wrap">
+    <div class="auth-card">
+      <div class="brand">
+        <div class="brand-mark">А</div>
+        <div>
+          <div class="brand-name">Аксіома</div>
+          <div class="brand-sub">Банк нового покоління</div>
+        </div>
+      </div>
+
+      <div class="auth-title">Вхід в акаунт</div>
+      <div class="auth-hint">Той самий нік і пароль, що у SlotOK</div>
+
+      <label class="field-label" for="authNick">Нік</label>
+      <input id="authNick" autocomplete="username" placeholder="ваш нік" onkeydown="if(event.key==='Enter')document.getElementById('authPass').focus()">
+
+      <label class="field-label" for="authPass">Пароль</label>
+      <input id="authPass" type="password" autocomplete="current-password" placeholder="••••••••" onkeydown="if(event.key==='Enter')axLogin()">
+
+      <div id="authError" class="auth-error"></div>
+
+      <button class="btn btn-primary btn-block" id="authBtn" onclick="axLogin()">Увійти</button>
+      <div class="auth-foot">Немає акаунту? Зареєструйся у застосунку <b>SlotOK</b> — тут той самий вхід.</div>
+    </div>
+  </div>
+
+  <!-- ══════════════ ДОДАТОК ══════════════ -->
+  <div id="appScreen" class="app-wrap hidden">
+    <header class="app-header">
+      <div class="brand brand-sm">
+        <div class="brand-mark brand-mark-sm">А</div>
+        <div class="brand-name brand-name-sm">Аксіома</div>
+      </div>
+      <button class="icon-btn" onclick="axLogout()" title="Вийти" aria-label="Вийти">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg>
+      </button>
+    </header>
+
+    <main class="app-main">
+      <!-- Картка -->
+      <div class="card-scene">
+        <div class="ax-card" id="axCard">
+          <div class="ax-card-sheen"></div>
+          <div class="ax-card-top">
+            <div class="ax-card-bank">Аксіома</div>
+            <div class="ax-card-badge" id="axCardBadge"></div>
+          </div>
+          <div class="ax-card-chip"></div>
+          <div class="ax-card-number" id="axCardNumber" onclick="axCopyNumber()">•••• •••• •••• ••••</div>
+          <div class="ax-card-row">
+            <div>
+              <div class="ax-card-cap">Власник</div>
+              <div class="ax-card-val" id="axCardHolder">—</div>
+            </div>
+            <div>
+              <div class="ax-card-cap">Діє до</div>
+              <div class="ax-card-val" id="axCardExpiry">••/••</div>
+            </div>
+            <div>
+              <div class="ax-card-cap">CVV</div>
+              <div class="ax-card-val" id="axCardCvv">•••</div>
+            </div>
+          </div>
+          <div class="ax-card-frozen hidden" id="axCardFrozen">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="11" width="17" height="10.5" rx="2.5"/><path d="M7.5 11V7a4.5 4.5 0 0 1 9 0v4"/></svg>
+            <span>Заблоковано</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Баланс -->
+      <div class="balance-box">
+        <div class="balance-cap">Баланс картки</div>
+        <div class="balance-amount"><span class="cur">₴</span><span id="axBalance">0</span></div>
+      </div>
+
+      <!-- Швидкі дії -->
+      <div class="actions" id="axActions"></div>
+
+      <!-- Код підключення до SlotOK -->
+      <section class="panel" id="axLinkPanel">
+        <div class="panel-head">
+          <div class="panel-title">Підключення до SlotOK</div>
+        </div>
+        <div class="panel-body" id="axLinkBody"></div>
+      </section>
+
+      <!-- Історія / виписка -->
+      <section class="panel">
+        <div class="panel-head">
+          <div class="panel-title">Виписка</div>
+          <button class="link-btn" onclick="axShowAllTx()">Усі операції</button>
+        </div>
+        <div class="panel-body is-flush" id="axTxList">
+          <div class="muted">Операцій ще немає</div>
+        </div>
+      </section>
+
+      <div class="app-foot">Аксіома Банк · партнер SlotOK · v1</div>
+    </main>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script src="password.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
