@@ -1,43 +1,68 @@
 {
   "rules": {
+    ".read": false,
+    ".write": false,
+    "handles": {
+      "$h": {
+        ".read": true,
+        ".write": "auth != null && !data.exists() && auth.token.email === $h + '@axioma-bank.firebaseapp.com'",
+        ".validate": "newData.val() === auth.uid"
+      }
+    },
     "users": {
-      "$nick": {
-        ".read": "auth != null && (!data.child('authUid').exists() || data.child('authUid').val() === auth.uid)",
-        ".write": "auth != null && (!data.child('authUid').exists() || data.child('authUid').val() === auth.uid)",
-        "pass": {
-          ".read": "auth != null"
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid",
+        "nick": {
+          ".validate": "newData.isString()"
         },
-        "authUid": {
-          ".write": "auth != null"
+        "createdAt": {
+          ".validate": "(!data.exists() && newData.val() === now) || data.val() === newData.val()"
+        },
+        "cards": {
+          "$card": {
+            "balance": {
+              ".validate": "newData.isNumber() && newData.val() >= 0"
+            }
+          }
+        },
+        "savings": {
+          "$jar": {
+            "balance": {
+              ".validate": "newData.isNumber() && newData.val() >= 0"
+            }
+          }
         }
-      },
-      ".indexOn": [
-        "virtualCard/number"
-      ]
-    },
-    "axiomLinkCodes": {
-      "$nick": {
-        ".read": "auth != null && root.child('users').child($nick).child('authUid').val() === auth.uid",
-        ".write": "auth != null && root.child('users').child($nick).child('authUid').val() === auth.uid"
       }
     },
-    "axiomCardIndex": {
-      ".read": "auth != null",
+    "public": {
+      "$h": {
+        ".read": "auth != null",
+        ".write": "auth != null && auth.token.email === $h + '@axioma-bank.firebaseapp.com'",
+        ".validate": "!newData.exists() || newData.child('name').isString()"
+      }
+    },
+    "cardIndex": {
       "$num": {
-        ".write": "auth != null && ((newData.exists() && root.child('users').child(newData.child('nick').val()).child('authUid').val() === auth.uid) || (!newData.exists() && root.child('users').child(data.child('nick').val()).child('authUid').val() === auth.uid))"
+        ".read": "auth != null",
+        ".write": "auth != null && (!data.exists() || data.child('uid').val() === auth.uid) && (!newData.exists() || (newData.child('uid').val() === auth.uid && auth.token.email === newData.child('handle').val() + '@axioma-bank.firebaseapp.com'))",
+        ".validate": "!newData.exists() || ($num.length === 16 && newData.child('card').isString())"
       }
     },
-    "axiomPublic": {
-      ".read": "auth != null",
-      "$nick": {
-        ".write": "auth != null && root.child('users').child($nick).child('authUid').val() === auth.uid"
+    "inbox": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        "$id": {
+          ".write": "auth != null && ((!data.exists() && newData.exists()) || (auth.uid === $uid && !newData.exists()))",
+          ".validate": "!newData.exists() || (newData.child('amount').isNumber() && newData.child('amount').val() > 0 && auth.token.email === newData.child('fromHandle').val() + '@axioma-bank.firebaseapp.com')"
+        }
       }
     },
-    "axiomReferrals": {
+    "referrals": {
       "$inviter": {
-        ".read": "auth != null && root.child('users').child($inviter).child('authUid').val() === auth.uid",
-        "$nick": {
-          ".write": "auth != null && !data.exists() && root.child('users').child($nick).child('authUid').val() === auth.uid"
+        ".read": "auth != null && auth.token.email === $inviter + '@axioma-bank.firebaseapp.com'",
+        "$h": {
+          ".write": "auth != null && !data.exists() && newData.exists() && auth.token.email === $h + '@axioma-bank.firebaseapp.com' && root.child('users').child(auth.uid).child('profile').child('invitedBy').val() === $inviter && root.child('users').child(auth.uid).child('createdAt').val() > now - 604800000"
         }
       }
     }

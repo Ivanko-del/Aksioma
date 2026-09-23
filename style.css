@@ -758,3 +758,8 @@ body.has-sheet .toast.show { transform: translateX(-50%) translateY(0); }
 .skin-tile.is-upload { background: var(--surface-2) !important; border: 1.5px dashed var(--line-2); box-shadow: none; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: var(--fg-2); }
 .skin-tile.is-upload svg { width: 20px; height: 20px; }
 .skin-tile.is-upload span { text-shadow: none; text-align: center; }
+
+/* ── Акаунти Аксіоми ────────────────────────────────────────────── */
+.ob-note { margin: -6px 0 14px; padding: 10px 12px; border-radius: 12px; font-size: 13px; line-height: 1.5; background: rgba(61,220,151,.1); color: #9ff0cb; border: 1px solid rgba(61,220,151,.25); }
+.partner-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.partner-sub { font-size: 13px; color: var(--fg-3); flex: 1; min-width: 0; }

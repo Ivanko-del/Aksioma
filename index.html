@@ -6,7 +6,7 @@
   <meta name="theme-color" content="#0a0b11">
   <title>Аксіома Банк</title>
 
-  <!-- Та сама Firebase (проєкт nye-slotok) і ті самі акаунти, що в SlotOK -->
+  <!-- Firebase «axioma-bank» (своя база й акаунти) + читання бази SlotOK для перенесення гравців -->
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
@@ -18,9 +18,9 @@
 </head>
 <body>
 
-  <!-- ══════════════ ВХІД ══════════════ -->
-  <div id="authScreen" class="auth-wrap">
-    <div class="auth-card">
+  <!-- ══════════════ ВХІД / РЕЄСТРАЦІЯ ══════════════ -->
+  <div id="authScreen" class="auth-wrap hidden">
+    <form class="auth-card" id="authForm" novalidate onsubmit="event.preventDefault(); authSubmit();">
       <div class="brand">
         <div class="brand-mark">А</div>
         <div>
@@ -29,20 +29,25 @@
         </div>
       </div>
 
-      <div class="auth-title">Вхід в акаунт</div>
-      <div class="auth-hint">Той самий нік і пароль, що у SlotOK</div>
+      <div class="auth-title" id="authTitle">Вхід в акаунт</div>
+      <div class="auth-hint" id="authHint"></div>
 
       <label class="field-label" for="authNick">Нік</label>
-      <input id="authNick" autocomplete="username" placeholder="ваш нік" onkeydown="if(event.key==='Enter')document.getElementById('authPass').focus()">
+      <input id="authNick" autocomplete="username" autocapitalize="off" spellcheck="false" placeholder="ваш нік">
 
       <label class="field-label" for="authPass">Пароль</label>
-      <input id="authPass" type="password" autocomplete="current-password" placeholder="••••••••" onkeydown="if(event.key==='Enter')axLogin()">
+      <input id="authPass" type="password" autocomplete="current-password" placeholder="••••••••">
 
-      <div id="authError" class="auth-error"></div>
+      <div id="authPass2Wrap" class="hidden">
+        <label class="field-label" for="authPass2">Повтори пароль</label>
+        <input id="authPass2" type="password" autocomplete="new-password" placeholder="••••••••">
+      </div>
 
-      <button class="btn btn-primary btn-block" id="authBtn" onclick="axLogin()">Увійти</button>
-      <div class="auth-foot">Немає акаунту? Зареєструйся у застосунку <b>SlotOK</b> — тут той самий вхід.</div>
-    </div>
+      <div id="authError" class="auth-error" aria-live="polite"></div>
+
+      <button type="submit" class="btn btn-primary btn-block" id="authBtn">Увійти</button>
+      <div class="auth-foot" id="authSwitch"></div>
+    </form>
     <p class="legal-note">Аксіома — ігровий симулятор банку, а не фінансова установа. Усі кошти віртуальні. <button class="link-btn" onclick="openRules()">Правила й політика</button></p>
   </div>
 
@@ -58,6 +63,7 @@
       </div>
       <div class="auth-title">Як тебе звати?</div>
       <div class="auth-hint">Інші гравці під час переказу бачитимуть лише ім’я та першу літеру прізвища.</div>
+      <div class="ob-note hidden" id="obMigrated">Рахунок зі SlotOK перенесено: картки, скарбнички й історія вже тут. Перевір дані й погодься з оновленими правилами.</div>
 
       <label class="field-label" for="obLast">Прізвище</label>
       <input id="obLast" autocomplete="family-name" maxlength="30" placeholder="Шевченко">
@@ -137,7 +143,7 @@
         </button>
 
         <section class="panel" id="axLinkPanel">
-          <div class="panel-head"><div class="panel-title">Підключення до SlotOK</div></div>
+          <div class="panel-head"><div class="panel-title">Підключені проєкти</div></div>
           <div class="panel-body" id="axLinkBody"></div>
         </section>
 
@@ -184,7 +190,7 @@
           <button class="menu-row" onclick="openRequisites()"><span class="mi" data-ic="doc"></span><span class="menu-txt">Реквізити основної картки</span><span class="chev"></span></button>
           <button class="menu-row" onclick="openRequisites()"><span class="mi" data-ic="gauge"></span><span class="menu-txt">Денний ліміт</span><span class="menu-val" id="axMoreLimit"></span><span class="chev"></span></button>
           <button class="menu-row" onclick="openNewCard()"><span class="mi" data-ic="cards"></span><span class="menu-txt">Відкрити нову картку</span><span class="chev"></span></button>
-          <button class="menu-row" onclick="goMainCard()"><span class="mi" data-ic="check"></span><span class="menu-txt">Підключення до SlotOK</span><span class="menu-val" id="axMoreLink"></span><span class="chev"></span></button>
+          <button class="menu-row" onclick="goMainCard()"><span class="mi" data-ic="check"></span><span class="menu-txt">Підключені проєкти</span><span class="menu-val" id="axMoreLink"></span><span class="chev"></span></button>
         </div>
 
         <div class="menu-group">
@@ -201,7 +207,7 @@
           <button class="menu-row" onclick="openAbout()"><span class="mi" data-ic="info"></span><span class="menu-txt">Про Аксіому</span><span class="chev"></span></button>
         </div>
 
-        <div class="app-foot">Аксіома Банк · партнер SlotOK · v4<br>Ігровий симулятор банку. Усі кошти віртуальні.</div>
+        <div class="app-foot">Аксіома Банк · v5<br>Ігровий симулятор банку. Усі кошти віртуальні.</div>
       </section>
     </main>
 
@@ -218,6 +224,7 @@
   <script src="password.js"></script>
   <script src="skins.js"></script>
   <script src="app.js"></script>
+  <script src="migrate.js"></script>
   <script src="bank.js"></script>
   <script src="social.js"></script>
 </body>

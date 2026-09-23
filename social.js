@@ -1,15 +1,15 @@
 // ═══════════════════════════════════════════════════════════════════
 // Аксіома Банк — відкриття рахунку (ПІБ + правила), правила/політика,
-// реферальна програма, перекази іншим гравцям за номером картки.
+// переказ іншому гравцю, реферальна програма.
 // Спирається на app.js і bank.js.
 // ═══════════════════════════════════════════════════════════════════
 'use strict';
 
-const RULES_VERSION = 1;
+const RULES_VERSION = 2;
 const REF_BONUS = 100;
 const REF_MAX = 50;                          // скільки друзів максимум оплачуємо
-const REF_NEW_USER_MS = 7 * 86400000;        // «новий» = акаунт SlotOK молодший за 7 днів
-const P2P_MIN = 10;                          // як мінімум переказу в SlotOK
+const REF_NEW_USER_MS = 7 * 86400000;        // «новий» = акаунт Аксіоми, молодший за 7 днів (перевіряють і правила бази)
+const P2P_MIN = 10;
 const NAME_RE = /^[A-Za-zА-ЯҐЄІЇа-яґєії]+(?:['’ʼ-][A-Za-zА-ЯҐЄІЇа-яґєії]+)*$/;
 
 // ═══════════════════════════════════════════════════════════════════
@@ -17,19 +17,21 @@ const NAME_RE = /^[A-Za-zА-ЯҐЄІЇа-яґєії]+(?:['’ʼ-][A-Za-zА-ЯҐ�
 // ═══════════════════════════════════════════════════════════════════
 const RULES = [
   ['Що таке Аксіома',
-   'Аксіома — ігровий застосунок-симулятор банку, партнер розважальної платформи SlotOK. Аксіома не є банком, фінансовою чи платіжною установою, не має ліцензії Національного банку України й не надає фінансових послуг.'],
+   'Аксіома — ігровий застосунок-симулятор банку для розважальних проєктів, зокрема SlotOK. Аксіома не є банком, фінансовою чи платіжною установою, не має ліцензії Національного банку України й не надає фінансових послуг.'],
   ['Усі гроші віртуальні',
    'Баланси, картки, перекази, скарбнички й бонуси в Аксіомі — віртуальні ігрові одиниці. Вони не мають грошової вартості, не обмінюються на справжні гроші, товари чи послуги й не виводяться на справжні картки чи рахунки. Позначка «₴» — лише ігрова умовність.'],
   ['Картки несправжні',
    'Номери карток, CVV і терміни дії в Аксіомі згенеровані для гри й не працюють у жодній справжній платіжній системі. Ніколи не вводь тут дані своїх справжніх банківських карток.'],
-  ['Персональні дані',
-   'Під час відкриття рахунку ти вказуєш прізвище, ім’я та по батькові. Вони зберігаються в базі даних проєкту (Firebase) разом з твоїм акаунтом SlotOK. Іншим гравцям у застосунку показуємо лише ім’я та першу літеру прізвища — щоб відправник переказу бачив, кому надсилає.'],
+  ['Акаунт і персональні дані',
+   'Акаунт Аксіоми окремий від акаунтів у проєктах-партнерах. Прізвище, ім’я та по батькові зберігаються в базі даних Аксіоми (Firebase) — доступ до них має лише власник акаунта. Іншим гравцям показуємо тільки ім’я та першу літеру прізвища, щоб відправник переказу бачив, кому надсилає.'],
+  ['Проєкти-партнери',
+   'Проєкт-партнер (наприклад, SlotOK) підключається до основної картки, коли ти входиш у свій акаунт Аксіоми в ньому. Після цього він може поповнювати гру з картки й виводити гроші на неї. Відключити проєкт можна в Аксіомі будь-коли.'],
   ['Перекази',
-   'Переказ іншому гравцю виконується одразу й не скасовується. Перед відправкою перевір ім’я отримувача. Переказувати можна з картки, яка не заблокована, у межах денного ліміту.'],
+   'Переказ іншому гравцю не скасовується. Перед відправкою перевір ім’я отримувача. Переказувати можна з картки, яка не заблокована, у межах денного ліміту основної картки.'],
   ['Реферальна програма',
-   'За кожного нового користувача, який під час відкриття рахунку в Аксіомі вказав твій нік, ти отримуєш ' + REF_BONUS + ' віртуальних ₴ на основну картку. Новим вважається акаунт SlotOK, створений не раніше ніж за 7 днів до відкриття рахунку. Максимум — ' + REF_MAX + ' друзів. Бонуси за штучно створені акаунти можуть бути анульовані.'],
+   'За кожного друга, який створив новий акаунт Аксіоми й під час відкриття рахунку вказав твій нік, ти отримуєш ' + REF_BONUS + ' віртуальних ₴ на основну картку. Новим вважається акаунт, створений не раніше ніж за 7 днів. Максимум — ' + REF_MAX + ' друзів. Бонуси за штучно створені акаунти можуть бути анульовані.'],
   ['Безпека акаунта',
-   'Не передавай нікому пароль, CVV чи код підключення до SlotOK. Підтримка ніколи їх не питає.'],
+   'Не передавай нікому пароль чи CVV. Підтримка ніколи їх не питає.'],
   ['Зміни правил',
    'Правила можуть оновлюватися. Користуючись Аксіомою, ти погоджуєшся з актуальною версією.'],
 ];
@@ -58,9 +60,9 @@ function displayNameOf(p) {
 function fullNameOf(p) {
   return p ? [p.lastName, p.firstName, p.middleName].filter(Boolean).join(' ') : '';
 }
-function isNewForReferral(u) {
-  const reg = Number((u || {}).registeredAt) || 0;
-  return reg > 0 && Date.now() - reg <= REF_NEW_USER_MS;
+function isNewAccount(u) {
+  const c = Number((u || {}).createdAt) || 0;
+  return c > 0 && Date.now() - c <= REF_NEW_USER_MS;
 }
 function savedRef() {
   try { return localStorage.getItem('axioma_ref') || ''; } catch (e) { return ''; }
@@ -71,11 +73,16 @@ function showOnboarding() {
   $('appScreen').classList.add('hidden');
   if (!scr.classList.contains('hidden')) return; // уже відкрито — не затираємо введене
   scr.classList.remove('hidden');
-  const canInvite = isNewForReferral(userData);
-  const ref = savedRef() || (userData && userData.referredBy) || '';
+  const canInvite = isNewAccount(userData);
+  const ref = savedRef();
   $('obNick').textContent = currentUser || '';
   $('obInviteWrap').classList.toggle('hidden', !canInvite);
   $('obInvite').value = canInvite && ref !== currentUser ? ref : '';
+  const pre = typeof _prefillProfile !== 'undefined' ? _prefillProfile : null;
+  $('obLast').value = pre ? pre.lastName : '';
+  $('obFirst').value = pre ? pre.firstName : '';
+  $('obMiddle').value = pre ? pre.middleName : '';
+  $('obMigrated').classList.toggle('hidden', !(userData && userData.migratedFrom));
   $('obErr').textContent = '';
   $('obLast').focus();
 }
@@ -95,20 +102,25 @@ async function submitOnboarding(e) {
   try {
     let invitedBy = '';
     const inv = $('obInvite').value.trim().replace(/^@/, '');
-    if (inv && isNewForReferral(userData)) {
-      if (inv.toLowerCase() === String(currentUser).toLowerCase()) { err.textContent = 'Не можна запросити самого себе'; return; }
-      if (!KEY_RE.test(inv)) { err.textContent = 'Код запрошення — це нік друга'; return; }
-      const inviter = (await db.ref('users/' + inv + '/axiomProfile/firstName').once('value')).val();
-      if (!inviter) { err.textContent = 'Клієнта Аксіоми з ніком «' + inv + '» не знайдено. Перевір нік або залиш поле порожнім'; return; }
-      invitedBy = inv;
+    if (inv && isNewAccount(userData)) {
+      if (inv === currentUser) { err.textContent = 'Не можна запросити самого себе'; return; }
+      if (!NICK_PATH_RE.test(inv)) { err.textContent = 'Код запрошення — це нік друга'; return; }
+      const pubSnap = await db.ref('public/' + handleOf(inv) + '/name').once('value');
+      if (!pubSnap.exists()) { err.textContent = 'Клієнта Аксіоми з ніком «' + inv + '» не знайдено. Перевір нік або залиш поле порожнім'; return; }
+      invitedBy = handleOf(inv);
     }
-    const now = Date.now();
-    const profile = { lastName: last, firstName: first, middleName: middle, createdAt: now, rulesVersion: RULES_VERSION, acceptedRulesAt: now };
+    const profile = { lastName: last, firstName: first, middleName: middle, rulesVersion: RULES_VERSION, acceptedRulesAt: Date.now() };
     if (invitedBy) profile.invitedBy = invitedBy;
-    await db.ref('axiomPublic/' + currentUser).set({ name: displayNameOf(profile) });
-    if (invitedBy) await db.ref('axiomReferrals/' + invitedBy + '/' + currentUser).set({ ts: now });
-    await db.ref('users/' + currentUser + '/axiomProfile').set(profile);
+    await db.ref('public/' + handleOf(currentUser)).set({ name: displayNameOf(profile) });
+    // Порядок важливий: правило на referrals звіряє profile.invitedBy, тож профіль — першим.
+    // Профіль записуємо останнім кроком listener'а, тому тут без update на весь users/<uid>.
+    await db.ref('users/' + currentUid + '/profile').set(profile);
+    if (invitedBy) {
+      try { await db.ref('referrals/' + invitedBy + '/' + handleOf(currentUser)).set({ ts: firebase.database.ServerValue.TIMESTAMP }); }
+      catch (ex) { console.error('referral:', ex); }
+    }
     try { localStorage.removeItem('axioma_ref'); } catch (ex) { /* неважливо */ }
+    if (typeof _prefillProfile !== 'undefined') _prefillProfile = null;
     toast('Рахунок відкрито. Вітаємо в Аксіомі, ' + first + '!', 'success');
   } catch (ex) {
     console.error(ex);
@@ -119,64 +131,41 @@ async function submitOnboarding(e) {
 }
 
 // ═══════════════════════════════════════════════════════════════════
-// ІНДЕКС КАРТОК: номер → власник (для переказів за номером)
+// ІНДЕКС КАРТОК: номер → власник (для переказів за номером).
+// Правила бази дають писати в запис лише власнику картки.
 // ═══════════════════════════════════════════════════════════════════
 let _indexedSig = '';
 function syncCardIndex() {
-  if (!db || !currentUser) return;
+  if (!db || !currentUid) return;
   const cards = getCards().filter((c) => /^\d{16}$/.test(String(c.number || '').replace(/\D/g, '')));
   const sig = cards.map((c) => c.id + ':' + c.number).join('|');
   if (sig === _indexedSig) return;
   _indexedSig = sig;
-  const updates = {};
-  cards.forEach((c) => { updates[String(c.number).replace(/\D/g, '')] = { nick: currentUser, card: c.id }; });
-  db.ref('axiomCardIndex').update(updates).catch((e) => console.error('card index:', e));
+  cards.forEach((c) => {
+    db.ref('cardIndex/' + String(c.number).replace(/\D/g, '')).set({ uid: currentUid, handle: handleOf(currentUser), card: c.id })
+      .catch((e) => console.error('card index:', e));
+  });
 }
 function unindexCard(number) {
   const d = String(number || '').replace(/\D/g, '');
-  if (d.length === 16) db.ref('axiomCardIndex/' + d).remove().catch((e) => console.error(e));
+  if (d.length === 16) db.ref('cardIndex/' + d).remove().catch((e) => console.error(e));
 }
 
-// Знаходить картку за номером і ПЕРЕВІРЯЄ, що в записі власника справді цей
-// номер (індекс може бути застарілим). Повертає { nick, card, name, frozen }.
-async function checkCardHit(hit, digits) {
-  if (!hit || !KEY_RE.test(String(hit.nick || '')) || !KEY_RE.test(String(hit.card || ''))) return null;
-  const recPath = hit.card === 'axiom' ? 'virtualCard' : 'axiomCards/' + hit.card;
-  const rec = (await db.ref('users/' + hit.nick + '/' + recPath).once('value')).val();
-  return rec && String(rec.number || '').replace(/\D/g, '') === digits ? { hit: hit, recPath: recPath, rec: rec } : null;
-}
+// Повертає { uid, nick, card, name } або null.
 async function resolveCard(digits) {
-  let ok = await checkCardHit((await db.ref('axiomCardIndex/' + digits).once('value')).val(), digits);
-  if (!ok) {
-    // Індексу нема (власник ще не відкривав оновлену Аксіому) або він не
-    // збігається з карткою — шукаємо основну картку напряму.
-    const formatted = digits.replace(/(.{4})(?=.)/g, '$1 ');
-    const snap = await db.ref('users').orderByChild('virtualCard/number').equalTo(formatted).limitToFirst(1).once('value');
-    const found = Object.keys(snap.val() || {})[0];
-    ok = found ? await checkCardHit({ nick: found, card: 'axiom' }, digits) : null;
-  }
-  if (!ok) return null;
-  const hit = ok.hit, recPath = ok.recPath, rec = ok.rec;
-  const pub = (await db.ref('axiomPublic/' + hit.nick + '/name').once('value')).val();
-  return { nick: hit.nick, card: hit.card, recPath: recPath, name: typeof pub === 'string' ? pub.slice(0, 40) : '', frozen: !!rec.frozen };
-}
-
-// Куди зараховувати: основна картка отримувача — за тією ж проєкцією, що
-// в SlotOK (активна в SlotOK → users/<nick>/balance), додаткова — на себе.
-async function recipientBalPath(r) {
-  if (r.card !== 'axiom') return r.recPath + '/balance';
-  const base = 'users/' + r.nick + '/';
-  const [active, linked, cards] = await Promise.all([
-    db.ref(base + 'activeCardId').once('value'),
-    db.ref(base + 'virtualCard/axiomLinked').once('value'),
-    db.ref(base + 'linkedCards').once('value'),
-  ]);
-  const u = { activeCardId: active.val(), virtualCard: { axiomLinked: !!linked.val() }, linkedCards: cards.val() || {} };
-  return mainBalPath(u);
+  const hit = (await db.ref('cardIndex/' + digits).once('value')).val();
+  if (!hit || typeof hit.uid !== 'string' || !/^[a-z2-7]{1,64}$/.test(String(hit.handle || '')) || !KEY_RE.test(String(hit.card || ''))) return null;
+  const nick = nickFromHandle(hit.handle);
+  if (!nick) return null;
+  const pub = (await db.ref('public/' + hit.handle + '/name').once('value')).val();
+  return { uid: hit.uid, nick: nick, card: hit.card, name: typeof pub === 'string' ? pub.slice(0, 40) : '' };
 }
 
 // ═══════════════════════════════════════════════════════════════════
 // ПЕРЕКАЗ ІНШОМУ ГРАВЦЮ
+// Чужий рахунок напряму не чіпаємо: відправник списує зі своєї картки й
+// кладе переказ у inbox/<uid отримувача>. Отримувач сам забирає вхідні на
+// свою картку, щойно відкриє Аксіому (або проєкт-партнер з його входом).
 // ═══════════════════════════════════════════════════════════════════
 function axOpenTransferMenu() {
   openSheet('Переказ',
@@ -194,7 +183,7 @@ function formatCardInput(v) {
 
 function openP2P(prefill) {
   const cards = getCards();
-  const sel = getCard(_selId) ? _selId : 'axiom';
+  const sel = getCard(_selId) ? _selId : 'main';
   const m = openSheet('Переказ гравцю',
     '<form class="form" id="axP2PForm" novalidate>' +
       '<label class="field-label" for="axP2PFrom">З картки</label>' +
@@ -238,10 +227,9 @@ function openP2P(prefill) {
       const r = await resolveCard(digits);
       if (seq !== lookupSeq) return;
       if (!r) { who.innerHTML = '<span class="is-err">Картку Аксіоми з таким номером не знайдено</span>'; return; }
-      if (r.frozen) { who.innerHTML = '<span class="is-err">Картку отримувача заблоковано</span>'; return; }
       recipient = r;
       who.innerHTML = '<span class="avatar avatar-xs">' + esc((r.name || r.nick).charAt(0).toUpperCase()) + '</span>' +
-        '<span><b>' + esc(r.name || 'Без імені') + '</b><small>@' + esc(r.nick) + (r.card === 'axiom' ? '' : ' · додаткова картка') + '</small></span>';
+        '<span><b>' + esc(r.name || 'Без імені') + '</b><small>@' + esc(r.nick) + (r.card === 'main' ? '' : ' · додаткова картка') + '</small></span>';
       refreshBtn();
     } catch (e) {
       console.error(e);
@@ -275,17 +263,16 @@ async function sendToPlayer(cardId, r, amount, note) {
   if (_sending) return false;
   const from = getCard(cardId);
   if (!from) { toast('Картку не знайдено', 'error'); return false; }
-  if (r.nick === currentUser) { toast('Для своїх карток є переказ між своїми рахунками', 'error'); return false; }
+  if (r.uid === currentUid) { toast('Для своїх карток є переказ між своїми рахунками', 'error'); return false; }
   if (!(amount >= P2P_MIN) || amount > 1e9) { toast('Мінімальна сума переказу — ' + P2P_MIN + ' ₴', 'error'); return false; }
   if (from.frozen) { toast('Картку заблоковано — розблокуй її, щоб переказати', 'error'); return false; }
   if (from.main && amount > mainLimitLeft()) { toast('Денний ліміт основної картки: сьогодні лишилось ' + fmt(mainLimitLeft()) + ' ₴', 'error'); return false; }
   if (amount > from.balance + 1e-9) { toast('Недостатньо коштів: доступно ' + fmt(from.balance) + ' ₴', 'error'); return false; }
 
   _sending = true;
-  const base = 'users/' + currentUser + '/';
+  const base = 'users/' + currentUid + '/';
   let debited = false;
   try {
-    const toPath = 'users/' + r.nick + '/' + await recipientBalPath(r);
     const res = await db.ref(base + from.balPath).transaction((cur) => {
       const v = Number(cur) || 0;
       if (v + 1e-9 < amount) return;
@@ -293,21 +280,14 @@ async function sendToPlayer(cardId, r, amount, note) {
     }, undefined, false);
     if (!res.committed) { toast('Недостатньо коштів', 'error'); return false; }
     debited = true;
-    await db.ref(toPath).set(firebase.database.ServerValue.increment(amount));
+    await db.ref('inbox/' + r.uid).push({
+      fromHandle: handleOf(currentUser), fromName: displayNameOf(userData.profile) || currentUser,
+      amount: amount, note: note || '', card: r.card, ts: firebase.database.ServerValue.TIMESTAMP,
+    });
     debited = false;
     if (from.main) noteMainSpend(amount);
-
-    const me = displayNameOf(userData.axiomProfile) || currentUser;
-    const ts = Date.now();
-    const outTx = { dir: 'out', amount: amount, title: 'Переказ: ' + (r.name || '@' + r.nick), subtitle: note || ('@' + r.nick), p2p: true, ts: ts };
-    const inTx = { dir: 'in', amount: amount, title: 'Переказ від ' + me, subtitle: note || ('@' + currentUser), p2p: true, ts: ts };
-    const writes = [
-      from.main ? db.ref(base + 'cardTx').push(Object.assign(outTx, { cardId: 'axiom' }))
-                : db.ref(base + 'axiomTx').push(Object.assign(outTx, { acct: from.id })),
-      r.card === 'axiom' ? db.ref('users/' + r.nick + '/cardTx').push(Object.assign(inTx, { cardId: 'axiom' }))
-                         : db.ref('users/' + r.nick + '/axiomTx').push(Object.assign(inTx, { acct: r.card })),
-    ];
-    Promise.all(writes).catch((e) => console.error('p2p log failed:', e));
+    pushTx(from.id, { dir: 'out', amount: amount, title: 'Переказ: ' + (r.name || '@' + r.nick), subtitle: note || ('@' + r.nick), p2p: true })
+      .catch((e) => console.error('p2p log:', e));
     return true;
   } catch (e) {
     console.error(e);
@@ -317,7 +297,7 @@ async function sendToPlayer(cardId, r, amount, note) {
         toast('Переказ не пройшов — гроші повернули на картку', 'error');
       } catch (e2) {
         console.error('refund failed:', e2);
-        toast('Переказ перервався. Якщо сума зникла — напиши в підтримку SlotOK', 'error');
+        toast('Переказ перервався. Якщо сума зникла — напиши в підтримку', 'error');
       }
     } else {
       toast('Не вдалося переказати. Перевір зʼєднання й спробуй ще раз', 'error');
@@ -328,56 +308,99 @@ async function sendToPlayer(cardId, r, amount, note) {
   }
 }
 
+// ── Вхідні перекази ────────────────────────────────────────────────
+// Забираємо запис транзакцією (видаляємо, лише якщо він ще є — двічі не
+// зарахується навіть з двох вкладок), тоді зараховуємо. Якщо зарахувати не
+// вдалося — повертаємо запис у вхідні.
+let _inboxWatching = null;
+let _inboxBusy = false;
+function watchInbox() {
+  if (_inboxWatching === currentUid) return;
+  unwatchInbox();
+  _inboxWatching = currentUid;
+  db.ref('inbox/' + currentUid).on('value', (snap) => claimInbox(snap.val() || {}));
+}
+function unwatchInbox() {
+  if (_inboxWatching) db.ref('inbox/' + _inboxWatching).off();
+  _inboxWatching = null;
+}
+async function claimInbox(items) {
+  if (_inboxBusy || !userData || !userData.profile) return;
+  _inboxBusy = true;
+  const uid = currentUid;
+  let got = 0, last = null;
+  try {
+    for (const id of Object.keys(items)) {
+      const it = items[id];
+      const amount = round2(Number(it && it.amount) || 0);
+      if (!(amount > 0) || uid !== currentUid) continue;
+      const res = await db.ref('inbox/' + uid + '/' + id).transaction((cur) => (cur ? null : undefined), undefined, false);
+      if (!res.committed) continue;
+      const card = it.card && getCard(String(it.card)) ? String(it.card) : 'main';
+      try {
+        await db.ref('users/' + uid + '/cards/' + card + '/balance').set(firebase.database.ServerValue.increment(amount));
+      } catch (e) {
+        console.error('inbox credit:', e);
+        db.ref('inbox/' + uid + '/' + id).set(it).catch((e2) => console.error('inbox restore:', e2));
+        continue;
+      }
+      const fromNick = nickFromHandle(it.fromHandle);
+      const who = String(it.fromName || fromNick || '').slice(0, 40);
+      pushTx(card, { dir: 'in', amount: amount, title: 'Переказ від ' + who, subtitle: String(it.note || ('@' + fromNick)).slice(0, 60), p2p: true })
+        .catch((e) => console.error(e));
+      got += amount; last = who;
+    }
+  } finally {
+    _inboxBusy = false;
+  }
+  if (got) toast('+' + fmt(got) + ' ₴ — переказ' + (last ? ' від ' + last : ''), 'success');
+}
+
 // ═══════════════════════════════════════════════════════════════════
 // РЕФЕРАЛЬНА ПРОГРАМА: «приведи друга — отримай 100 ₴ на картку»
-// Друг під час відкриття рахунку лишає запис axiomReferrals/<ти>/<друг>.
-// Твій клієнт сам забирає бонус: перевіряє, що в профілі друга справді
-// invitedBy = ти, фіксує виплату транзакцією (двічі не заплатиш) і
-// зараховує 100 ₴ на основну картку. Чужий баланс ніхто не чіпає.
+// Друг під час відкриття рахунку лишає referrals/<твій нік>/<його нік>;
+// правила бази пускають такий запис лише від нового (до 7 днів) акаунта,
+// у профілі якого invitedBy = ти. Бонус забирає твій клієнт: фіксує виплату
+// транзакцією (двічі не заплатиш) і зараховує на основну картку.
 // ═══════════════════════════════════════════════════════════════════
 let _refs = {};
-let _refRejected = {};  // записи, які не пройшли перевірку (нема invitedBy = ти)
 let _refWatching = null;
 let _claiming = false;
 
 function watchReferrals() {
-  if (_refWatching === currentUser) return;
+  const me = handleOf(currentUser);
+  if (_refWatching === me) return;
   unwatchReferrals();
-  _refWatching = currentUser;
-  db.ref('axiomReferrals/' + currentUser).on('value', (snap) => {
+  _refWatching = me;
+  db.ref('referrals/' + me).on('value', (snap) => {
     _refs = snap.val() || {};
     claimReferralBonuses();
-    if (_tab === 'more') renderMore();
-  });
+    if (typeof _tab !== 'undefined' && _tab === 'more') renderMore();
+  }, (e) => console.error('referrals:', e));
 }
 function unwatchReferrals() {
-  if (_refWatching) db.ref('axiomReferrals/' + _refWatching).off();
+  if (_refWatching) db.ref('referrals/' + _refWatching).off();
   _refWatching = null;
   _refs = {};
-  _refRejected = {};
 }
 
-function refPaid() { return (userData && userData.axiomRefPaid) || {}; }
+function refPaid() { return (userData && userData.refPaid) || {}; }
 
 async function claimReferralBonuses() {
-  if (_claiming || !userData || !userData.axiomProfile) return;
-  const me = currentUser;
-  const todo = Object.keys(_refs).filter((n) => KEY_RE.test(n) && n !== me && !refPaid()[n] && !_refRejected[n]);
+  if (_claiming || !userData || !userData.profile) return;
+  const uid = currentUid;
+  const todo = Object.keys(_refs).filter((h) => /^[a-z2-7]{1,64}$/.test(h) && h !== handleOf(currentUser) && !refPaid()[h]);
   if (!todo.length) return;
   _claiming = true;
   let got = 0;
   try {
-    for (const nick of todo) {
-      if (Object.keys(refPaid()).length >= REF_MAX || currentUser !== me) break;
-      const prof = (await db.ref('users/' + nick + '/axiomProfile').once('value')).val();
-      if (!prof || prof.invitedBy !== me) { _refRejected[nick] = true; continue; }
-      const res = await db.ref('users/' + me + '/axiomRefPaid/' + nick).transaction((cur) => (cur ? undefined : Date.now()), undefined, false);
+    for (const h of todo) {
+      if (Object.keys(refPaid()).length >= REF_MAX || uid !== currentUid) break;
+      const res = await db.ref('users/' + uid + '/refPaid/' + h).transaction((cur) => (cur ? undefined : Date.now()), undefined, false);
       if (!res.committed) continue;
-      await db.ref('users/' + me + '/' + mainBalPath(userData)).set(firebase.database.ServerValue.increment(REF_BONUS));
-      db.ref('users/' + me + '/cardTx').push({
-        dir: 'in', amount: REF_BONUS, title: 'Бонус за друга: ' + (displayNameOf(prof) || '@' + nick),
-        subtitle: 'Реферальна програма', cardId: 'axiom', ref: true, ts: Date.now(),
-      }).catch((e) => console.error(e));
+      await db.ref('users/' + uid + '/cards/main/balance').set(firebase.database.ServerValue.increment(REF_BONUS));
+      pushTx('main', { dir: 'in', amount: REF_BONUS, title: 'Бонус за друга: @' + nickFromHandle(h), subtitle: 'Реферальна програма', ref: true })
+        .catch((e) => console.error(e));
       got += REF_BONUS;
     }
   } catch (e) {
@@ -394,13 +417,13 @@ function inviteLink() {
 
 function openReferral() {
   const paid = refPaid();
-  const friends = Object.keys(_refs).filter((n) => KEY_RE.test(n) && !_refRejected[n])
+  const friends = Object.keys(_refs).filter((h) => /^[a-z2-7]{1,64}$/.test(h))
     .sort((a, b) => ((_refs[b] || {}).ts || 0) - ((_refs[a] || {}).ts || 0));
   const earned = Object.keys(paid).length * REF_BONUS;
   const m = openSheet('Запроси друга',
     '<div class="ref-hero">' +
       '<div class="ref-big">+' + REF_BONUS + ' ₴</div>' +
-      '<p>на основну картку за кожного нового друга, який відкриє рахунок в Аксіомі й вкаже твій нік</p>' +
+      '<p>на основну картку за кожного друга, який створить новий акаунт Аксіоми й вкаже твій нік</p>' +
     '</div>' +
     '<div class="req">' +
       '<div class="req-row"><span>Твій код</span><b class="mono">' + esc(currentUser) + '</b>' +
@@ -413,13 +436,13 @@ function openReferral() {
       '<div><b>' + fmt(earned) + ' ₴</b><span>отримано</span></div>' +
       '<div><b>' + Math.max(0, REF_MAX - Object.keys(paid).length) + '</b><span>ще можна</span></div>' +
     '</div>' +
-    '<p class="form-note">Рахується друг, чий акаунт SlotOK створено не раніше ніж за 7 днів до відкриття рахунку в Аксіомі. Бонус — віртуальні ₴.</p>' +
+    '<p class="form-note">Рахується новий акаунт Аксіоми (до 7 днів), у якому друг вказав твій нік. Бонус — віртуальні ₴.</p>' +
     (friends.length
       ? '<div class="sheet-sub">Друзі</div><div class="sheet-flush">' + friends.map((n) =>
           '<div class="tx"><div class="tx-icn in">' + icon('user') + '</div>' +
-          '<div class="tx-main"><div class="tx-title">@' + esc(n) + '</div><div class="tx-sub">' +
+          '<div class="tx-main"><div class="tx-title">@' + esc(nickFromHandle(n)) + '</div><div class="tx-sub">' +
             esc(new Date((_refs[n] || {}).ts || 0).toLocaleDateString('uk-UA')) + '</div></div>' +
-          '<div class="tx-amt ' + (paid[n] ? 'in' : '') + '">' + (paid[n] ? '+' + REF_BONUS + ' ₴' : (Object.keys(paid).length >= REF_MAX ? 'ліміт' : 'перевіряємо')) + '</div></div>'
+          '<div class="tx-amt ' + (paid[n] ? 'in' : '') + '">' + (paid[n] ? '+' + REF_BONUS + ' ₴' : (Object.keys(paid).length >= REF_MAX ? 'ліміт' : 'зараховуємо')) + '</div></div>'
         ).join('') + '</div>'
       : ''));
   const copy = (text, okMsg) => {
@@ -434,12 +457,18 @@ function openReferral() {
 function afterSync() {
   syncCardIndex();
   watchReferrals();
+  watchInbox();
+}
+function stopSocial() {
+  unwatchReferrals();
+  unwatchInbox();
+  _indexedSig = '';
 }
 
 function initSocial() {
   try {
     const ref = new URLSearchParams(location.search).get('ref');
-    if (ref && KEY_RE.test(ref)) localStorage.setItem('axioma_ref', ref);
+    if (ref && NICK_PATH_RE.test(ref)) localStorage.setItem('axioma_ref', ref);
   } catch (e) { /* неважливо */ }
   $('obForm').addEventListener('submit', submitOnboarding);
 }

@@ -1,6 +1,6 @@
 // ═══════════════════════════════════════════════════════════════════
 // Аксіома Банк — вкладки, перекази, додаткові картки, заощадження, «Ще».
-// Спирається на глобальні стани й хелпери з app.js (db, currentUser,
+// Спирається на глобальні стани й хелпери з app.js (db, currentUid,
 // userData, getCards, esc, fmt, toast, icon …).
 // ═══════════════════════════════════════════════════════════════════
 'use strict';
@@ -56,10 +56,10 @@ function closeSheet() {
 // ═══════════════════════════════════════════════════════════════════
 const JAR_COLORS = ['#7c83ff', '#3ddc97', '#f5b84b', '#ff7a9c', '#4fc3f7', '#b48cff'];
 const MAX_JARS = 10;
-const LIMIT_PRESETS = [0, 500, 1000, 2000, 5000, 10000]; // ті самі, що CARD_LIMIT_PRESETS у SlotOK
+const LIMIT_PRESETS = [0, 500, 1000, 2000, 5000, 10000];
 
 function getJars() {
-  const s = (userData && userData.axiomSavings) || {};
+  const s = (userData && userData.savings) || {};
   return Object.keys(s).filter((k) => KEY_RE.test(k) && s[k])
     .sort((a, b) => (s[a].createdAt || 0) - (s[b].createdAt || 0))
     .map((id) => {
@@ -87,31 +87,31 @@ function getAccounts() {
   const jars = getJars().map((j) => ({
     key: 'jar:' + j.id, kind: 'jar', id: j.id, main: false,
     name: 'Скарбничка «' + j.name + '»', short: j.name,
-    balance: j.balance, balPath: 'axiomSavings/' + j.id + '/balance', frozen: false,
+    balance: j.balance, balPath: 'savings/' + j.id + '/balance', frozen: false,
   }));
   return cards.concat(jars);
 }
 function getAccount(key) { return getAccounts().find((a) => a.key === key) || null; }
 
-// Денний ліміт основної картки — ті самі поля й формат дня, що в SlotOK
-// (virtualCard/dayLimit, dayKey, daySpent), тож ліміт спільний для обох.
+// Денний ліміт основної картки (cards/main: dayLimit, dayKey, daySpent).
+// Його ж перевіряють проєкти-партнери, коли поповнюються з картки.
 function dayKey(ts) {
   const d = new Date(ts || Date.now());
   return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate();
 }
 function mainLimitLeft() {
-  const vc = (userData && userData.virtualCard) || {};
+  const vc = (userData && userData.cards && userData.cards.main) || {};
   const lim = Math.max(0, Number(vc.dayLimit) || 0);
   if (!lim) return Infinity;
   const spent = vc.dayKey === dayKey() ? (Number(vc.daySpent) || 0) : 0;
   return Math.max(0, lim - spent);
 }
 function noteMainSpend(amount) {
-  const vc = (userData && userData.virtualCard) || {};
+  const vc = (userData && userData.cards && userData.cards.main) || {};
   if (!(Number(vc.dayLimit) > 0)) return;
   const key = dayKey();
   const spent = (vc.dayKey === key ? (Number(vc.daySpent) || 0) : 0) + amount;
-  db.ref('users/' + currentUser + '/virtualCard').update({ dayKey: key, daySpent: Math.round(spent * 100) / 100 })
+  db.ref('users/' + currentUid + '/cards/main').update({ dayKey: key, daySpent: Math.round(spent * 100) / 100 })
     .catch((e) => console.error(e));
 }
 
@@ -121,18 +121,13 @@ function parseAmount(v) {
   return Number.isFinite(n) ? round2(n) : NaN;
 }
 
+// own: переказ між власними рахунками — у підсумках місяця не рахується.
 function logMove(acc, dir, amount, title) {
-  const base = 'users/' + currentUser + '/';
-  // own: переказ між власними рахунками — у підсумках місяця не рахується.
-  const tx = { dir: dir, amount: amount, title: title, subtitle: 'Між своїми рахунками', own: true, ts: Date.now() };
-  // Основна картка пише у спільний зі SlotOK cardTx — гроші справді пішли
-  // з картки, яку він бачить. Решта — лише в axiomTx.
-  if (acc.kind === 'card' && acc.main) return db.ref(base + 'cardTx').push(Object.assign(tx, { cardId: 'axiom' }));
-  return db.ref(base + 'axiomTx').push(Object.assign(tx, { acct: acc.kind === 'jar' ? 'jar:' + acc.id : acc.id }));
+  return pushTx(acc.kind === 'jar' ? 'jar:' + acc.id : acc.id, { dir: dir, amount: amount, title: title, subtitle: 'Між своїми рахунками', own: true });
 }
 
-// Списання — транзакцією (гроші не підуть у мінус навіть при одночасній грі
-// в SlotOK), зарахування — атомарним increment. Якщо зарахування не пройшло,
+// Списання — транзакцією (гроші не підуть у мінус, навіть якщо проєкт-партнер
+// саме зараз списує з картки), зарахування — атомарним increment. Якщо зарахування не пройшло,
 // повертаємо списане тим самим increment'ом.
 let _moving = false;
 async function moveMoney(fromKey, toKey, amount) {
@@ -142,7 +137,6 @@ async function moveMoney(fromKey, toKey, amount) {
   if (from.key === to.key) { toast('Обери різні рахунки', 'error'); return false; }
   if (!(amount > 0) || amount > 1e9) { toast('Введи суму більше нуля', 'error'); return false; }
   if (from.frozen) { toast('Картку-відправника заблоковано — розблокуй її, щоб переказати', 'error'); return false; }
-  if (to.frozen) { toast('Картку-одержувача заблоковано', 'error'); return false; }
   if (from.main) {
     const left = mainLimitLeft();
     if (amount > left) { toast('Денний ліміт основної картки: сьогодні лишилось ' + fmt(left) + ' ₴', 'error'); return false; }
@@ -150,7 +144,7 @@ async function moveMoney(fromKey, toKey, amount) {
   if (amount > from.balance + 1e-9) { toast('Недостатньо коштів: доступно ' + fmt(from.balance) + ' ₴', 'error'); return false; }
 
   _moving = true;
-  const base = 'users/' + currentUser + '/';
+  const base = 'users/' + currentUid + '/';
   let debited = false;
   try {
     const res = await db.ref(base + from.balPath).transaction((cur) => {
@@ -176,7 +170,7 @@ async function moveMoney(fromKey, toKey, amount) {
         toast('Переказ не пройшов — гроші повернули на рахунок', 'error');
       } catch (e2) {
         console.error('refund failed:', e2);
-        toast('Переказ перервався. Якщо сума зникла — напиши в підтримку SlotOK', 'error');
+        toast('Переказ перервався. Якщо сума зникла — напиши в підтримку', 'error');
       }
     } else {
       toast('Не вдалося переказати. Перевір зʼєднання й спробуй ще раз', 'error');
@@ -278,7 +272,7 @@ function openNewCard() {
   const types = Object.keys(AX_CARD_TYPES);
   const m = openSheet('Відкрити картку',
     '<p class="sheet-lead">Додаткова картка — окремий рахунок у Аксіомі зі своїм номером і CVV. ' +
-      'Гратиме в SlotOK лише основна; на додаткову гроші переказуються з основної.</p>' +
+      'Проєкти-партнери (як SlotOK) працюють з основною; на додаткову гроші переказуються з основної.</p>' +
     '<div class="type-list" role="radiogroup" aria-label="Тип картки">' +
       types.map((k, i) => {
         const t = AX_CARD_TYPES[k];
@@ -296,7 +290,7 @@ function openNewCard() {
     const btn = e.currentTarget;
     btn.disabled = true; btn.textContent = 'Випускаємо…';
     try {
-      const ref = db.ref('users/' + currentUser + '/axiomCards').push();
+      const ref = db.ref('users/' + currentUid + '/cards').push();
       _pendingSelId = ref.key;
       await ref.set(Object.assign(newCardData(currentUser), { type: type, balance: 0, frozen: false, createdAt: Date.now() }));
       closeSheet();
@@ -318,13 +312,13 @@ async function closeAccount(key) {
   const acc = getAccount(key);
   if (!acc || acc.main) return false;
   if (acc.balance > 0) {
-    const ok = await moveMoney(key, 'card:axiom', acc.balance);
+    const ok = await moveMoney(key, 'card:main', acc.balance);
     if (!ok) return false;
   }
-  const path = acc.kind === 'jar' ? 'axiomSavings/' + acc.id : 'axiomCards/' + acc.id;
+  const path = acc.kind === 'jar' ? 'savings/' + acc.id : 'cards/' + acc.id;
   const card = acc.kind === 'card' ? getCard(acc.id) : null;
   try {
-    await db.ref('users/' + currentUser + '/' + path).remove();
+    await db.ref('users/' + currentUid + '/' + path).remove();
     if (card) unindexCard(card.number);
     return true;
   } catch (e) {
@@ -360,24 +354,24 @@ function axOpenCardSettings() {
         '<button class="icon-btn" onclick="axCopyNumber(\'' + c.id + '\')" aria-label="Скопіювати номер">' + icon('copy') + '</button></div>' +
       '<div class="req-row"><span>Діє до</span><b class="mono">' + esc(c.expiry || '—') + '</b></div>' +
       '<div class="req-row"><span>Власник</span><b class="mono">' + esc(holder) + '</b></div>' +
-      '<div class="req-row"><span>Тип</span><b>' + esc(c.main ? 'Основна · зв’язок зі SlotOK' : c.title + ' · лише Аксіома') + '</b></div>' +
+      '<div class="req-row"><span>Тип</span><b>' + esc(c.main ? 'Основна · для проєктів-партнерів' : c.title + ' · лише Аксіома') + '</b></div>' +
     '</div>' +
     '<div class="sheet-section">' +
       '<div class="sheet-sub">Скін</div>' +
       '<button class="choice-row" onclick="openSkinPicker(\'' + c.id + '\')">' +
         '<span class="skin-thumb" style="background:' + esc(c.skin ? c.skin.dot : 'linear-gradient(135deg,#6b5cff,#c06bff)') + '"></span>' +
         '<span class="menu-txt"><b>' + esc(c.skin && !c.skin.builtin ? c.skin.name : 'Стандартний дизайн') + '</b>' +
-        '<small>' + (c.main ? 'Скін основної картки видно й у SlotOK' : 'Видно лише в Аксіомі') + '</small></span>' +
+        '<small>' + (c.main ? 'Скін основної картки видно й у підключених проєктах' : 'Видно лише в Аксіомі') + '</small></span>' +
         '<span class="chev">' + icon('chevron') + '</span></button>' +
     '</div>';
   if (c.main) {
     const lim = c.dayLimit;
-    const vc = userData.virtualCard || {};
+    const vc = (userData.cards && userData.cards.main) || {};
     const spent = vc.dayKey === dayKey() ? (Number(vc.daySpent) || 0) : 0;
     html +=
       '<div class="sheet-section">' +
         '<div class="sheet-sub">Денний ліміт</div>' +
-        '<p class="sheet-lead">Скільки за добу може піти з основної картки на перекази тут і на вивід, перекази та подарунки в SlotOK. Ставки він не чіпає.' +
+        '<p class="sheet-lead">Скільки за добу може піти з основної картки: на перекази тут і на поповнення гри в підключених проєктах.' +
           (lim ? ' Сьогодні витрачено ' + fmt(spent) + ' з ' + fmt(lim) + ' ₴.' : '') + '</p>' +
         '<div class="chips">' + LIMIT_PRESETS.map((v) =>
           '<button type="button" class="chip-btn' + (v === lim ? ' is-on' : '') + '" onclick="setMainDayLimit(' + v + ')">' + (v ? fmt(v) + ' ₴' : 'Без ліміту') + '</button>'
@@ -395,7 +389,7 @@ function axOpenCardSettings() {
   if (closeBtn) {
     armConfirm(closeBtn, 'Натисни ще раз, щоб закрити', async () => {
       const ok = await closeAccount('card:' + c.id);
-      if (ok) { closeSheet(); _selId = 'axiom'; toast('Картку закрито', 'success'); }
+      if (ok) { closeSheet(); _selId = 'main'; toast('Картку закрито', 'success'); }
     });
   }
 }
@@ -403,7 +397,7 @@ function axOpenCardSettings() {
 async function setMainDayLimit(v) {
   v = Math.max(0, Math.floor(Number(v) || 0));
   try {
-    await db.ref('users/' + currentUser + '/virtualCard/dayLimit').set(v);
+    await db.ref('users/' + currentUid + '/cards/main/dayLimit').set(v);
     toast(v ? 'Денний ліміт: ' + fmt(v) + ' ₴' : 'Денний ліміт знято', 'success');
     if ($('axSheet')) axOpenCardSettings();
   } catch (e) {
@@ -414,16 +408,15 @@ async function setMainDayLimit(v) {
 
 // ═══════════════════════════════════════════════════════════════════
 // СКІНИ КАРТОК
-// Основна картка пише skin/customPhotoUrl у virtualCard — те саме поле, яке
-// SlotOK читає для картки Аксіоми, тож він одразу показує вибраний тут скін
-// (і навпаки). Додаткові картки — у axiomCards/<id>, їх бачить лише Аксіома.
+// Скін лежить на самій картці (skin/customPhotoUrl). Скін основної картки
+// проєкти-партнери читають через axioma-sdk.js і показують у себе.
 // ═══════════════════════════════════════════════════════════════════
-const PHOTO_MAX_W = 500;          // як у SlotOK: стискаємо перед записом у базу
+const PHOTO_MAX_W = 500;          // стискаємо перед записом у базу
 const PHOTO_MAX_CHARS = 400000;   // ~300 КБ JPEG — більше в запис профілю не пишемо
 
 function cardRecord(c) {
   const u = userData || {};
-  return (c.main ? u.virtualCard : (u.axiomCards || {})[c.id]) || {};
+  return ((u.cards || {})[c.id]) || {};
 }
 
 function openSkinPicker(cardId) {
@@ -439,7 +432,7 @@ function openSkinPicker(cardId) {
     '<div class="skin-grid">' + cat.ids.filter((id) => SKIN_BY_ID[id]).map((id) => tile(id, SKIN_BY_ID[id].prev, SKIN_BY_ID[id].name)).join('') + '</div>'
   ).join('');
   const m = openSheet('Скін · ' + (c.main ? 'Основна' : c.title) + ' ' + digitsTail(c.number),
-    '<p class="sheet-lead">' + (c.main ? 'Скін основної картки спільний зі SlotOK — він зміниться в обох застосунках.' : 'Скін додаткової картки видно лише в Аксіомі.') + '</p>' +
+    '<p class="sheet-lead">' + (c.main ? 'Скін основної картки побачать і підключені проєкти, як-от SlotOK.' : 'Скін додаткової картки видно лише в Аксіомі.') + '</p>' +
     '<div class="skin-grid">' +
       tile('', defBg, 'Стандартний', '') +
       '<button type="button" class="skin-tile is-upload' + (current === 'custom-photo' ? ' is-on' : '') + '" data-skin="custom-photo">' +
@@ -463,9 +456,9 @@ async function setCardSkin(cardId, skinId, photoUrl) {
     ? { skin: skinId, customPhotoUrl: skinId === 'custom-photo' ? photoUrl : null }
     : { skin: null, customPhotoUrl: null };
   try {
-    await db.ref('users/' + currentUser + '/' + c.recPath).update(upd);
+    await db.ref('users/' + currentUid + '/' + c.recPath).update(upd);
     closeSheet();
-    toast(skinId ? 'Скін застосовано' + (c.main ? ' — і в SlotOK теж' : '') : 'Повернули стандартний дизайн', 'success');
+    toast(skinId ? 'Скін застосовано' : 'Повернули стандартний дизайн', 'success');
   } catch (e) {
     console.error(e);
     toast('Не вдалося змінити скін. Спробуй ще раз', 'error');
@@ -525,7 +518,7 @@ function renderSavings() {
       '<div class="empty is-card">' +
         '<div class="empty-ic">' + icon('piggy') + '</div>' +
         '<p>Відкладай на ціль окремо від ігрового балансу</p>' +
-        '<p class="empty-sub">Скарбничка — окремий рахунок: гроші в ній не витратяться випадково в SlotOK. Відсотки не нараховуються.</p>' +
+        '<p class="empty-sub">Скарбничка — окремий рахунок: гроші в ній не витратяться випадково в грі. Відсотки не нараховуються.</p>' +
         '<button class="btn btn-primary" onclick="openNewJar()">Створити скарбничку</button>' +
       '</div>';
     return;
@@ -583,7 +576,7 @@ function openNewJar() {
     const btn = m.querySelector('#axJarSave');
     btn.disabled = true;
     try {
-      const ref = db.ref('users/' + currentUser + '/axiomSavings').push();
+      const ref = db.ref('users/' + currentUid + '/savings').push();
       await ref.set({ name: f.name, goal: f.goal, color: f.color, balance: 0, createdAt: Date.now() });
       closeSheet();
       setTab('savings');
@@ -599,8 +592,7 @@ function openNewJar() {
 function openJar(id) {
   const j = getJars().find((x) => x.id === id);
   if (!j) return;
-  const txs = Object.values(userData.axiomTx || {}).filter((t) => t && t.acct === 'jar:' + id)
-    .sort((a, b) => (b.ts || 0) - (a.ts || 0)).slice(0, 30);
+  const txs = txOf('jar:' + id).slice(0, 30);
   const pct = j.goal ? Math.min(1, j.balance / j.goal) : 0;
   const m = openSheet(j.name,
     '<div class="jar-hero">' +
@@ -611,8 +603,8 @@ function openJar(id) {
         : '<div class="jar-hero-sub">Без цілі</div>') +
     '</div>' +
     '<div class="btn-row">' +
-      '<button class="btn btn-primary" onclick="openTransfer({title:\'Поповнити скарбничку\', from:\'card:axiom\', to:\'jar:' + id + '\'})">Поповнити</button>' +
-      '<button class="btn btn-quiet" onclick="openTransfer({title:\'Зняти зі скарбнички\', from:\'jar:' + id + '\', to:\'card:axiom\'})"' + (j.balance > 0 ? '' : ' disabled') + '>Зняти</button>' +
+      '<button class="btn btn-primary" onclick="openTransfer({title:\'Поповнити скарбничку\', from:\'card:main\', to:\'jar:' + id + '\'})">Поповнити</button>' +
+      '<button class="btn btn-quiet" onclick="openTransfer({title:\'Зняти зі скарбнички\', from:\'jar:' + id + '\', to:\'card:main\'})"' + (j.balance > 0 ? '' : ' disabled') + '>Зняти</button>' +
     '</div>' +
     '<div class="sheet-section"><div class="sheet-sub">Історія</div></div>' +
     '<div class="sheet-flush">' + (txs.length ? txs.map(txRow).join('') : '<div class="muted">Поповнень ще не було</div>') + '</div>' +
@@ -637,7 +629,7 @@ function editJar(id) {
     const f = readJarForm(m);
     if (f.err) { m.querySelector('#axJarErr').textContent = f.err; return; }
     try {
-      await db.ref('users/' + currentUser + '/axiomSavings/' + id).update({ name: f.name, goal: f.goal, color: f.color });
+      await db.ref('users/' + currentUid + '/savings/' + id).update({ name: f.name, goal: f.goal, color: f.color });
       openJar(id);
       toast('Збережено', 'success');
     } catch (err) {
@@ -656,26 +648,23 @@ function renderMore() {
   const letter = String(currentUser || '?').charAt(0).toUpperCase();
   $('axProfileAvatar').textContent = letter;
   $('axHeaderAvatar').textContent = letter;
-  $('axProfileNick').textContent = fullNameOf(userData.axiomProfile) || currentUser || '';
+  $('axProfileNick').textContent = fullNameOf(userData.profile) || currentUser || '';
   $('axProfileHandle').textContent = '@' + (currentUser || '');
-  const refCount = Object.keys(userData.axiomRefPaid || {}).length;
+  const refCount = Object.keys(userData.refPaid || {}).length;
   $('axMoreRef').textContent = refCount ? refCount + ' ' + plural(refCount, 'друг', 'друзі', 'друзів') : '+' + REF_BONUS + ' ₴';
   $('axProfileSub').textContent = cards.length + ' ' + plural(cards.length, 'картка', 'картки', 'карток') +
     ' · ' + jars.length + ' ' + plural(jars.length, 'скарбничка', 'скарбнички', 'скарбничок');
   $('axProfileTotal').textContent = fmt(total) + ' ₴';
-  const vc = userData.virtualCard || {};
+  const vc = (userData.cards && userData.cards.main) || {};
   $('axMoreLimit').textContent = Number(vc.dayLimit) > 0 ? fmt(vc.dayLimit) + ' ₴' : 'Без ліміту';
-  $('axMoreLink').textContent = vc.axiomLinked ? 'Підключено' : 'Не підключено';
+  const parts = partnersOf(userData);
+  $('axMoreLink').textContent = parts.length ? parts.map((x) => x.name).join(', ') : 'Немає';
 }
 
-function openRequisites() {
-  goMainCard();
-  axOpenCardSettings();
-}
 
 function openPasswordChange() {
   const m = openSheet('Змінити пароль',
-    '<p class="sheet-lead">Акаунт спільний зі SlotOK — новий пароль діятиме в обох застосунках.</p>' +
+    '<p class="sheet-lead">Змінює пароль від Аксіоми. Пароль у SlotOK та інших проєктах лишається своїм.</p>' +
     '<form class="form" id="axPwForm" novalidate>' +
       '<input type="text" name="username" autocomplete="username" value="' + esc(currentUser) + '" hidden>' +
       '<label class="field-label" for="axPwOld">Поточний пароль</label>' +
@@ -695,28 +684,19 @@ function openPasswordChange() {
     if (p1.length < 6) { err.textContent = 'Новий пароль — мінімум 6 символів'; return; }
     if (p1 !== p2) { err.textContent = 'Нові паролі не збігаються'; return; }
     if (p1 === oldP) { err.textContent = 'Новий пароль збігається з поточним'; return; }
-    const lock = getLoginLock(currentUser);
-    if (lock.until && lock.until > Date.now()) {
-      err.textContent = 'Забагато спроб. Спробуй через ' + Math.ceil((lock.until - Date.now()) / 1000) + ' с.';
-      return;
-    }
     const btn = m.querySelector('#axPwBtn');
     btn.disabled = true; btn.textContent = 'Перевіряємо…';
     try {
-      const stored = (await db.ref('users/' + currentUser + '/pass').once('value')).val();
-      const check = await SlotOKPassword.verify(oldP, stored);
-      if (!check || !check.ok) {
-        registerLoginFailure(currentUser);
-        err.textContent = 'Поточний пароль невірний';
-        return;
-      }
-      registerLoginSuccess(currentUser);
-      await db.ref('users/' + currentUser + '/pass').set(await SlotOKPassword.hash(p1));
+      const user = auth.currentUser;
+      await user.reauthenticateWithCredential(firebase.auth.EmailAuthProvider.credential(user.email, oldP));
+      await user.updatePassword(p1);
       closeSheet();
-      toast('Пароль змінено — він діє і в SlotOK', 'success');
+      toast('Пароль змінено', 'success');
     } catch (ex) {
-      console.error(ex);
-      err.textContent = 'Не вдалося змінити пароль. Спробуй ще раз';
+      const code = (ex && ex.code) || '';
+      err.textContent = (code === 'auth/wrong-password' || code === 'auth/invalid-credential' || code === 'auth/invalid-login-credentials')
+        ? 'Поточний пароль невірний'
+        : (authErrorText(ex) || 'Не вдалося змінити пароль. Спробуй ще раз');
     } finally {
       if (btn.isConnected) { btn.disabled = false; btn.textContent = 'Змінити пароль'; }
     }
@@ -724,26 +704,30 @@ function openPasswordChange() {
 }
 
 const FAQ = [
+  ['Як зайти гравцю SlotOK?',
+   'Увійди в Аксіому ніком і паролем від SlotOK — рахунок перенесеться автоматично: картки, скарбнички, історія й скін. Далі пароль Аксіоми живе окремо від SlotOK.'],
+  ['Як грати з карткою в SlotOK?',
+   'У SlotOK відкрий «Каса → Аксіома» й увійди туди своїм акаунтом Аксіоми. Після цього в SlotOK можна поповнити гру з картки й вивести виграш назад на картку.'],
   ['Чим основна картка відрізняється від додаткових?',
-   'Основну можна підключити до SlotOK кодом — тоді з нею грають і поповнюють через касу SlotOK. Додаткові картки й скарбнички — окремі рахунки лише в Аксіомі: SlotOK їх не бачить, тож гроші на них не витратяться в грі.'],
+   'Основна — та, з якою працюють проєкти-партнери: з неї поповнюють гру й на неї виводять. Додаткові картки й скарбнички — окремі рахунки лише в Аксіомі, проєкти їх не бачать.'],
   ['Як поповнити картку?',
-   'Основна поповнюється в SlotOK → Каса, коли вона там активна. Додаткові картки й скарбнички поповнюються переказом з основної.'],
+   'Вивести гроші з гри на картку в проєкті-партнері, отримати переказ від іншого гравця або бонус за друга. Додаткові картки й скарбнички поповнюються переказом з основної.'],
+  ['Як переказати іншому гравцю?',
+   'Натисни «Переказ» → «Іншому гравцю» й введи 16-значний номер його картки Аксіоми. Перед відправкою побачиш ім’я отримувача — перевір його: переказ не скасовується. Гроші прийдуть отримувачу, щойно він відкриє Аксіому. Мінімум — 10 ₴.'],
   ['Як змінити скін картки?',
-   'Натисни на назву скіна під карткою або «Картка» → «Скін». Є 100 скінів і можна поставити своє фото. Скін основної картки спільний зі SlotOK: зміниш тут — зміниться там, і навпаки. Скіни додаткових карток видно лише в Аксіомі.'],
+   'Натисни на назву скіна під карткою або «Картка» → «Скін». Є 100 скінів і можна поставити своє фото. Скін основної картки побачать і підключені проєкти.'],
+  ['Як отримати 100 ₴ за друга?',
+   'Дай другові свій нік або посилання з «Ще → Запроси друга». Коли він створить новий акаунт Аксіоми й вкаже тебе, 100 ₴ прийдуть на твою основну картку. Максимум — 50 друзів.'],
   ['Чи нараховуються відсотки на скарбнички?',
    'Ні. Скарбничка — окремий рахунок для накопичення на ціль, без відсотків.'],
   ['Що робить денний ліміт?',
-   'Обмежує, скільки за добу може піти з основної картки: на перекази в Аксіомі та на вивід, перекази й подарунки в SlotOK. Ставки він не обмежує.'],
+   'Обмежує, скільки за добу може піти з основної картки: на перекази в Аксіомі та на поповнення гри в підключених проєктах.'],
   ['Що буде, якщо заблокувати картку?',
-   'З неї й на неї не можна переказувати. Блокування основної картки діє і в SlotOK. Розблокувати можна тією ж кнопкою.'],
-  ['Як переказати іншому гравцю?',
-   'Натисни «Переказ» → «Іншому гравцю» й введи 16-значний номер його картки Аксіоми. Перед відправкою побачиш ім’я отримувача — перевір його: переказ не скасовується. Мінімум — 10 ₴.'],
-  ['Як отримати 100 ₴ за друга?',
-   'Дай другові свій нік або посилання з розділу «Ще → Запроси друга». Коли новий користувач відкриє рахунок в Аксіомі й вкаже тебе, 100 ₴ прийдуть на твою основну картку. Максимум — 50 друзів.'],
+   'З неї не можна переказувати й поповнювати гру. Вхідні перекази й вивід на неї приходять як завжди. Розблокувати можна тією ж кнопкою.'],
   ['Це справжні гроші?',
    'Ні. Аксіома — ігровий симулятор банку: усі кошти віртуальні, не мають грошової вартості й не виводяться. Деталі — у «Правилах й політиці».'],
   ['Хтось дізнався мій CVV або пароль',
-   'Одразу заблокуй картку й зміни пароль у розділі «Ще → Безпека». Нікому не повідомляй CVV і пароль — навіть тим, хто називає себе підтримкою.'],
+   'Одразу заблокуй картку й зміни пароль у «Ще → Безпека». Нікому не повідомляй CVV і пароль — навіть тим, хто називає себе підтримкою.'],
 ];
 function openFaq() {
   openSheet('Питання й відповіді',
@@ -753,22 +737,27 @@ function openFaq() {
 }
 function openSupport() {
   openSheet('Підтримка',
-    '<p class="sheet-lead">Підтримка Аксіоми працює через SlotOK: відкрий SlotOK і напиши в чат підтримки. ' +
-      'Опиши, що сталося, і додай нік — ' + '<b>' + esc(currentUser) + '</b>.</p>' +
-    '<p class="sheet-lead">Ніхто з підтримки не питає пароль, CVV чи код підключення.</p>');
+    '<p class="sheet-lead">Поки підтримка Аксіоми працює через чат підтримки SlotOK. ' +
+      'Опиши, що сталося, і додай свій нік в Аксіомі — <b>' + esc(currentUser) + '</b>.</p>' +
+    '<p class="sheet-lead">Ніхто з підтримки не питає пароль чи CVV.</p>');
 }
 function openAbout() {
   openSheet('Про Аксіому',
-    '<p class="sheet-lead">Аксіома — ігровий симулятор банку, партнер SlotOK. Це не банк і не фінансова установа: усі кошти віртуальні. ' +
-      'Той самий акаунт, що в SlotOK; основна картка підключається до SlotOK кодом, а додаткові картки й скарбнички живуть лише тут.</p>' +
+    '<p class="sheet-lead">Аксіома — ігровий симулятор банку для кількох проєктів. Це не банк і не фінансова установа: усі кошти віртуальні. ' +
+      'Свій акаунт і картки; проєкти-партнери, як SlotOK, підключаються до основної картки через вхід в акаунт Аксіоми.</p>' +
     '<button class="btn btn-quiet btn-block" onclick="openRules()">Правила й політика</button>' +
-    '<div class="req" style="margin-top:14px"><div class="req-row"><span>Версія</span><b>4.0</b></div>' +
-      '<div class="req-row"><span>Партнер</span><b>SlotOK</b></div></div>');
+    '<div class="req" style="margin-top:14px"><div class="req-row"><span>Версія</span><b>5.0</b></div>' +
+      '<div class="req-row"><span>Партнери</span><b>' + esc(Object.values(PARTNER_NAMES).join(', ')) + '</b></div></div>');
+}
+
+function openRequisites() {
+  goMainCard();
+  axOpenCardSettings();
 }
 
 // ── Ініціалізація ──────────────────────────────────────────────────
 function goMainCard() {
-  _selId = 'axiom';
+  _selId = 'main';
   setTab('cards');
   renderCards();
   renderDetails();
