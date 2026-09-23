@@ -38,7 +38,13 @@ const authReady = new Promise((resolve) => { _authReadyResolve = resolve; });
 if (auth) {
   auth.onAuthStateChanged((user) => {
     if (user) { _authReadyResolve(user); return; }
-    auth.signInAnonymously().catch((e) => console.error('Anonymous auth failed:', e));
+    auth.signInAnonymously().catch((e) => {
+      // Якщо Anonymous Auth не увімкнено в консолі Firebase (або мережа
+      // недоступна) — не блокуємо вхід назавжди, а деградуємо до старої
+      // поведінки без authUid-прив'язки. Захист із п.1/2 у цьому разі не діє.
+      console.error('Anonymous auth failed — сесія працюватиме БЕЗ authUid-захисту:', e);
+      _authReadyResolve(null);
+    });
   });
 } else {
   _authReadyResolve(null);
