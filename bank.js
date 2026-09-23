@@ -361,6 +361,14 @@ function axOpenCardSettings() {
       '<div class="req-row"><span>Діє до</span><b class="mono">' + esc(c.expiry || '—') + '</b></div>' +
       '<div class="req-row"><span>Власник</span><b class="mono">' + esc(holder) + '</b></div>' +
       '<div class="req-row"><span>Тип</span><b>' + esc(c.main ? 'Основна · зв’язок зі SlotOK' : c.title + ' · лише Аксіома') + '</b></div>' +
+    '</div>' +
+    '<div class="sheet-section">' +
+      '<div class="sheet-sub">Скін</div>' +
+      '<button class="choice-row" onclick="openSkinPicker(\'' + c.id + '\')">' +
+        '<span class="skin-thumb" style="background:' + esc(c.skin ? c.skin.dot : 'linear-gradient(135deg,#6b5cff,#c06bff)') + '"></span>' +
+        '<span class="menu-txt"><b>' + esc(c.skin && !c.skin.builtin ? c.skin.name : 'Стандартний дизайн') + '</b>' +
+        '<small>' + (c.main ? 'Скін основної картки видно й у SlotOK' : 'Видно лише в Аксіомі') + '</small></span>' +
+        '<span class="chev">' + icon('chevron') + '</span></button>' +
     '</div>';
   if (c.main) {
     const lim = c.dayLimit;
@@ -402,6 +410,94 @@ async function setMainDayLimit(v) {
     console.error(e);
     toast('Не вдалося змінити ліміт', 'error');
   }
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// СКІНИ КАРТОК
+// Основна картка пише skin/customPhotoUrl у virtualCard — те саме поле, яке
+// SlotOK читає для картки Аксіоми, тож він одразу показує вибраний тут скін
+// (і навпаки). Додаткові картки — у axiomCards/<id>, їх бачить лише Аксіома.
+// ═══════════════════════════════════════════════════════════════════
+const PHOTO_MAX_W = 500;          // як у SlotOK: стискаємо перед записом у базу
+const PHOTO_MAX_CHARS = 400000;   // ~300 КБ JPEG — більше в запис профілю не пишемо
+
+function cardRecord(c) {
+  const u = userData || {};
+  return (c.main ? u.virtualCard : (u.axiomCards || {})[c.id]) || {};
+}
+
+function openSkinPicker(cardId) {
+  const c = getCard(cardId);
+  if (!c) return;
+  const current = cardRecord(c).skin || '';
+  const defBg = c.main ? 'linear-gradient(135deg,#1b1650,#5b3aa8 55%,#c06bff)' : (AX_CARD_TYPES[cardRecord(c).type] || AX_CARD_TYPES.white).bg;
+  const tile = (id, bg, name, cls) =>
+    '<button type="button" class="skin-tile' + (cls ? ' ' + cls : '') + (current === id ? ' is-on' : '') + '" data-skin="' + esc(id) + '" style="background:' + esc(bg) + '">' +
+      '<span>' + esc(name) + '</span>' + (current === id ? '<i>' + icon('check') + '</i>' : '') + '</button>';
+  const cats = (typeof SLOTOK_SKIN_CATEGORIES !== 'undefined' ? SLOTOK_SKIN_CATEGORIES : []).map((cat) =>
+    '<div class="sheet-sub skin-cat">' + esc(cat.name) + '</div>' +
+    '<div class="skin-grid">' + cat.ids.filter((id) => SKIN_BY_ID[id]).map((id) => tile(id, SKIN_BY_ID[id].prev, SKIN_BY_ID[id].name)).join('') + '</div>'
+  ).join('');
+  const m = openSheet('Скін · ' + (c.main ? 'Основна' : c.title) + ' ' + digitsTail(c.number),
+    '<p class="sheet-lead">' + (c.main ? 'Скін основної картки спільний зі SlotOK — він зміниться в обох застосунках.' : 'Скін додаткової картки видно лише в Аксіомі.') + '</p>' +
+    '<div class="skin-grid">' +
+      tile('', defBg, 'Стандартний', '') +
+      '<button type="button" class="skin-tile is-upload' + (current === 'custom-photo' ? ' is-on' : '') + '" data-skin="custom-photo">' +
+        icon('plus') + '<span>Своє фото</span>' + (current === 'custom-photo' ? '<i>' + icon('check') + '</i>' : '') + '</button>' +
+    '</div>' + cats);
+  m.querySelector('.sheet-body').addEventListener('click', (e) => {
+    const b = e.target.closest('.skin-tile');
+    if (!b) return;
+    const id = b.dataset.skin;
+    if (id === 'custom-photo') pickSkinPhoto(cardId);
+    else setCardSkin(cardId, id, null);
+  });
+}
+
+async function setCardSkin(cardId, skinId, photoUrl) {
+  const c = getCard(cardId);
+  if (!c) return;
+  if (skinId && skinId !== 'custom-photo' && !SKIN_BY_ID[skinId]) return;
+  if (skinId === 'custom-photo' && !PHOTO_RE.test(photoUrl || '')) return;
+  const upd = skinId
+    ? { skin: skinId, customPhotoUrl: skinId === 'custom-photo' ? photoUrl : null }
+    : { skin: null, customPhotoUrl: null };
+  try {
+    await db.ref('users/' + currentUser + '/' + c.recPath).update(upd);
+    closeSheet();
+    toast(skinId ? 'Скін застосовано' + (c.main ? ' — і в SlotOK теж' : '') : 'Повернули стандартний дизайн', 'success');
+  } catch (e) {
+    console.error(e);
+    toast('Не вдалося змінити скін. Спробуй ще раз', 'error');
+  }
+}
+
+function pickSkinPhoto(cardId) {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.onchange = () => {
+    const file = input.files && input.files[0];
+    if (!file) return;
+    if (!/^image\//.test(file.type)) { toast('Обери зображення', 'error'); return; }
+    if (file.size > 8 * 1024 * 1024) { toast('Фото завелике — максимум 8 МБ', 'error'); return; }
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const scale = Math.min(1, PHOTO_MAX_W / img.width);
+      const cv = document.createElement('canvas');
+      cv.width = Math.max(1, Math.round(img.width * scale));
+      cv.height = Math.max(1, Math.round(img.height * scale));
+      cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+      const data = cv.toDataURL('image/jpeg', 0.75);
+      if (data.length > PHOTO_MAX_CHARS) { toast('Фото надто деталізоване — спробуй інше', 'error'); return; }
+      setCardSkin(cardId, 'custom-photo', data);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); toast('Не вдалося відкрити фото', 'error'); };
+    img.src = url;
+  };
+  input.click();
 }
 
 // ═══════════════════════════════════════════════════════════════════
@@ -632,8 +728,8 @@ const FAQ = [
    'Основну можна підключити до SlotOK кодом — тоді з нею грають і поповнюють через касу SlotOK. Додаткові картки й скарбнички — окремі рахунки лише в Аксіомі: SlotOK їх не бачить, тож гроші на них не витратяться в грі.'],
   ['Як поповнити картку?',
    'Основна поповнюється в SlotOK → Каса, коли вона там активна. Додаткові картки й скарбнички поповнюються переказом з основної.'],
-  ['Звідки на картці скін?',
-   'Скін основної картки береться з SlotOK: обери його там у розділі картки — Аксіома покаже той самий. Додаткові картки мають власний дизайн, який обираєш під час відкриття.'],
+  ['Як змінити скін картки?',
+   'Натисни на назву скіна під карткою або «Картка» → «Скін». Є 100 скінів і можна поставити своє фото. Скін основної картки спільний зі SlotOK: зміниш тут — зміниться там, і навпаки. Скіни додаткових карток видно лише в Аксіомі.'],
   ['Чи нараховуються відсотки на скарбнички?',
    'Ні. Скарбничка — окремий рахунок для накопичення на ціль, без відсотків.'],
   ['Що робить денний ліміт?',

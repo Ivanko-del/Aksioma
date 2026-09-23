@@ -117,3 +117,15 @@ const SLOTOK_SKINS = [
     {id:'meme-npc',         name:'NPC',               accent:'#fff', prev:"url('https://i.imgflip.com/4/2k0qad.jpg') center/cover"},
     {id:'meme-rizzler',     name:'Rizzler',           accent:'#fff', prev:"url('https://i.imgflip.com/4/93etli.jpg') center/cover"},
 ];
+
+// Категорії — теж з openCardColorPicker у SlotOK.
+const SLOTOK_SKIN_CATEGORIES = [
+    { name:'✨ Класика', ids:['gold','onyx','platinum','copper','minimal','silver','bronze','obsidian','steel','ivory','charcoal','chrome'] },
+    { name:'💎 Самоцвіти', ids:['sapphire','emerald','amethyst','rosegold','coral','ruby','topaz','opal','garnet','turquoise','citrine','peridot'] },
+    { name:'🌪️ Стихії', ids:['fire','ice','mint','storm','sunset','thunder','earth','volcano','blizzard','tsunami','solar','void'] },
+    { name:'🚀 Космос і футуризм', ids:['cyber','galaxy','holo','nebula','matrix','synthwave','aurora','plasma','quantum'] },
+    { name:'🪨 Текстури', ids:['carbon','marble','denim','snake','leopard','wood','concrete','velvet','silk','brushedmetal','camo'] },
+    { name:'🎉 Особливі', ids:['pastel','xmas','ukraine','halloween','valentine','easter','autumn','spring','diamondelite','midnight'] },
+    { name:'🎭 Меми', ids:['meme-drake','meme-distracted','meme-womancat','meme-twobuttons','meme-changemymind','meme-successkid','meme-doge','meme-thisisfine','meme-stonks','meme-rollsafe','meme-pikachu','meme-disastergirl','meme-grumpycat','meme-expandingbrain','meme-onedoesnotsimply','meme-ancientaliens','meme-dicaprio','meme-pigeon','meme-batman','meme-spongebob','meme-sadpablo','meme-hidethepain'] },
+    { name:'🔥 Тренди зумерів', ids:['meme-67kid','meme-skibidi','meme-tralalero','meme-bombardiro','meme-tungtung','meme-chimpanzini','meme-gigachad','meme-sigma','meme-chillguy','meme-ohio','meme-npc','meme-rizzler'] },
+];

@@ -358,12 +358,13 @@ function getCards() {
     .forEach((id) => {
       const c = extra[id];
       const t = AX_CARD_TYPES[c.type] || AX_CARD_TYPES.white;
+      const own = resolveSkin(c);
       out.push({
         id: id, main: false, title: t.name, kind: t.kind, chip: t.chip,
         number: c.number, cvv: c.cvv, expiry: c.expiry, holder: c.holder,
         frozen: !!c.frozen, linked: false, dayLimit: 0,
         balance: Number(c.balance) || 0, balPath: 'axiomCards/' + id + '/balance', recPath: 'axiomCards/' + id,
-        skin: { name: t.name, bg: t.bg, light: t.light, builtin: true },
+        skin: own || { name: t.name, bg: t.bg, dot: t.bg, light: t.light, builtin: true },
       });
     });
   return out;
@@ -538,11 +539,10 @@ function renderDetails() {
   st.textContent = c.frozen ? 'Заблокована' : 'Активна';
   st.classList.toggle('is-frozen', c.frozen);
   $('axBalance').textContent = fmt(c.balance);
-  $('axSkinChip').innerHTML = c.main
-    ? (c.skin
-        ? '<span class="skin-dot" style="background:' + esc(c.skin.dot) + '"></span>Скін «' + esc(c.skin.name) + '» зі SlotOK'
-        : '<span class="skin-dot" style="background:linear-gradient(135deg,#6b5cff,#c06bff)"></span>Стандартний дизайн · скін змінюється в SlotOK')
-    : '<span class="skin-dot" style="background:' + esc(c.skin.bg) + '"></span>Працює лише в Аксіомі';
+  const skinName = c.skin && !c.skin.builtin ? 'Скін «' + c.skin.name + '»' : 'Стандартний дизайн';
+  $('axSkinChip').innerHTML =
+    '<span class="skin-dot" style="background:' + esc(c.skin ? c.skin.dot : 'linear-gradient(135deg,#6b5cff,#c06bff)') + '"></span>' +
+    esc(skinName + (c.main ? ' · діє і в SlotOK' : ' · лише Аксіома')) + '<span class="skin-edit">Змінити</span>';
 
   const btn = (fn, ic, label, on) =>
     '<button class="action-btn' + (on ? ' is-on' : '') + '" onclick="' + fn + '()"><span class="ai">' + icon(ic) + '</span><span>' + label + '</span></button>';

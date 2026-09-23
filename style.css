@@ -735,3 +735,26 @@ body.has-sheet .toast.show { transform: translateX(-50%) translateY(0); }
 .recipient .is-dim { color: var(--fg-3); }
 .avatar-xs { width: 34px; height: 34px; border-radius: 11px; font-size: 14px; }
 .profile-handle { font-size: 12.5px; color: var(--fg-2); margin-top: 2px; }
+
+/* ── Вибір скіна ────────────────────────────────────────────────── */
+.skin-chip { background: none; border: 0; padding: 4px 0; cursor: pointer; text-align: left; }
+.skin-chip:hover { color: var(--fg); }
+.skin-edit { color: var(--brand); font-weight: 600; margin-left: 6px; }
+.skin-thumb { width: 44px; aspect-ratio: 1.586 / 1; border-radius: 7px; flex-shrink: 0; background-size: cover !important; box-shadow: inset 0 0 0 1px rgba(255,255,255,.14); }
+.skin-cat { margin-top: 18px; }
+.skin-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.skin-tile {
+  position: relative; aspect-ratio: 1.586 / 1; border-radius: 10px; border: 0; padding: 6px 8px;
+  display: flex; align-items: flex-end; overflow: hidden; color: #fff; cursor: pointer;
+  background-size: cover !important; background-position: center !important;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.12);
+  transition: transform .15s var(--ease-out), box-shadow .15s;
+}
+.skin-tile:hover { transform: translateY(-2px); }
+.skin-tile span { position: relative; z-index: 1; font-size: 10.5px; font-weight: 700; line-height: 1.2; text-align: left; text-shadow: 0 1px 3px rgba(0,0,0,.85); }
+.skin-tile.is-on { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--brand); }
+.skin-tile i { position: absolute; top: 5px; right: 5px; width: 20px; height: 20px; border-radius: 50%; background: var(--brand); display: flex; align-items: center; justify-content: center; }
+.skin-tile i svg { width: 12px; height: 12px; }
+.skin-tile.is-upload { background: var(--surface-2) !important; border: 1.5px dashed var(--line-2); box-shadow: none; flex-direction: column; align-items: center; justify-content: center; gap: 4px; color: var(--fg-2); }
+.skin-tile.is-upload svg { width: 20px; height: 20px; }
+.skin-tile.is-upload span { text-shadow: none; text-align: center; }
