@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0b0d18">
+  <meta name="theme-color" content="#0a0b11">
   <title>Аксіома Банк</title>
 
   <!-- Та сама Firebase (проєкт nye-slotok) і ті самі акаунти, що в SlotOK -->
@@ -11,7 +11,9 @@
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
 
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&family=Unbounded:wght@500;600;700&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
@@ -23,7 +25,7 @@
         <div class="brand-mark">А</div>
         <div>
           <div class="brand-name">Аксіома</div>
-          <div class="brand-sub">Банк нового покоління</div>
+          <div class="brand-sub">Банк, де все очевидно</div>
         </div>
       </div>
 
@@ -50,47 +52,86 @@
         <div class="brand-mark brand-mark-sm">А</div>
         <div class="brand-name brand-name-sm">Аксіома</div>
       </div>
-      <button class="icon-btn" onclick="axLogout()" title="Вийти" aria-label="Вийти">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg>
-      </button>
+      <div class="header-right">
+        <span class="user-nick" id="axUserNick"></span>
+        <button class="icon-btn" onclick="axLogout()" title="Вийти" aria-label="Вийти">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg>
+        </button>
+      </div>
     </header>
 
     <main class="app-main">
-      <!-- Картка -->
-      <div class="card-scene">
-        <div class="ax-card" id="axCard">
-          <div class="ax-card-sheen"></div>
-          <div class="ax-card-top">
-            <div class="ax-card-bank">Аксіома</div>
-            <div class="ax-card-badge" id="axCardBadge"></div>
-          </div>
-          <div class="ax-card-chip"></div>
-          <div class="ax-card-number" id="axCardNumber" onclick="axCopyNumber()">•••• •••• •••• ••••</div>
-          <div class="ax-card-row">
-            <div>
-              <div class="ax-card-cap">Власник</div>
-              <div class="ax-card-val" id="axCardHolder">—</div>
+      <!-- 3D-картка: тап — фліп, курсор/гіроскоп — нахил -->
+      <div class="card-stage" id="axCardStage">
+        <div class="card3d" id="axCard" role="button" tabindex="0" aria-pressed="false" aria-label="Картка Аксіома. Натисни, щоб перевернути">
+          <div class="card3d-tilt">
+            <div class="card3d-flip">
+              <div class="card-edge" style="--z:-1"></div>
+              <div class="card-edge" style="--z:-0.5"></div>
+              <div class="card-edge" style="--z:0"></div>
+              <div class="card-edge" style="--z:0.5"></div>
+              <div class="card-edge" style="--z:1"></div>
+
+              <div class="face face-front">
+                <div class="face-skin" id="axSkinFront"></div>
+                <div class="face-glare"></div>
+                <div class="face-content">
+                  <div class="fc-top">
+                    <div class="fc-bank">Аксіома<small>debit · UAH</small></div>
+                    <div class="fc-badge" id="axCardBadge"></div>
+                  </div>
+                  <div class="fc-mid">
+                    <div class="chip"></div>
+                    <svg class="contactless" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8.5 8.5a5 5 0 0 1 0 7"/><path d="M12 6a8.5 8.5 0 0 1 0 12"/><path d="M15.5 3.5a12 12 0 0 1 0 17"/></svg>
+                  </div>
+                  <div class="fc-number" id="axCardNumber">•••• •••• •••• ••••</div>
+                  <div class="fc-bottom">
+                    <div>
+                      <div class="fc-cap">Власник</div>
+                      <div class="fc-val" id="axCardHolder">—</div>
+                    </div>
+                    <div>
+                      <div class="fc-cap">Діє до</div>
+                      <div class="fc-val" id="axCardExpiry">••/••</div>
+                    </div>
+                    <div class="fc-mark" aria-hidden="true">∴</div>
+                  </div>
+                </div>
+                <div class="face-frozen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="11" width="17" height="10.5" rx="2.5"/><path d="M7.5 11V7a4.5 4.5 0 0 1 9 0v4"/></svg><span>Заблоковано</span></div>
+              </div>
+
+              <div class="face face-back">
+                <div class="face-skin" id="axSkinBack"></div>
+                <div class="face-glare"></div>
+                <div class="back-stripe"></div>
+                <div class="back-body">
+                  <div class="back-sign-row">
+                    <div class="back-sign" id="axCardSign">—</div>
+                    <div class="back-cvv"><small>CVV</small><b id="axCardCvv">•••</b></div>
+                  </div>
+                  <div class="back-fine">Картку випустив Аксіома Банк для розрахунків у SlotOK. Не передавай CVV нікому — навіть «підтримці».</div>
+                  <div class="back-foot"><span>Аксіома Банк · 24/7</span><b aria-hidden="true">∴</b></div>
+                </div>
+                <div class="face-frozen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="11" width="17" height="10.5" rx="2.5"/><path d="M7.5 11V7a4.5 4.5 0 0 1 9 0v4"/></svg><span>Заблоковано</span></div>
+              </div>
             </div>
-            <div>
-              <div class="ax-card-cap">Діє до</div>
-              <div class="ax-card-val" id="axCardExpiry">••/••</div>
-            </div>
-            <div>
-              <div class="ax-card-cap">CVV</div>
-              <div class="ax-card-val" id="axCardCvv">•••</div>
-            </div>
-          </div>
-          <div class="ax-card-frozen hidden" id="axCardFrozen">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="11" width="17" height="10.5" rx="2.5"/><path d="M7.5 11V7a4.5 4.5 0 0 1 9 0v4"/></svg>
-            <span>Заблоковано</span>
           </div>
         </div>
+        <div class="card-shadow"></div>
+      </div>
+
+      <div class="card-meta">
+        <span class="skin-chip" id="axSkinChip"></span>
+        <span class="flip-hint"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 15.5-6.2L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16"/><path d="M3 21v-5h5"/></svg>Торкнись, щоб перевернути</span>
       </div>
 
       <!-- Баланс -->
       <div class="balance-box">
-        <div class="balance-cap">Баланс картки</div>
-        <div class="balance-amount"><span class="cur">₴</span><span id="axBalance">0</span></div>
+        <div>
+          <div class="balance-cap">Баланс картки</div>
+          <div class="balance-amount"><span id="axBalance">0</span><span class="cur">₴</span></div>
+        </div>
+        <span class="status-pill" id="axStatus">Активна</span>
       </div>
 
       <!-- Швидкі дії -->
@@ -115,13 +156,14 @@
         </div>
       </section>
 
-      <div class="app-foot">Аксіома Банк · партнер SlotOK · v1</div>
+      <div class="app-foot">Аксіома Банк · партнер SlotOK · v2</div>
     </main>
   </div>
 
   <div id="toast" class="toast"></div>
 
   <script src="password.js"></script>
+  <script src="skins.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
