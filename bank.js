@@ -322,8 +322,10 @@ async function closeAccount(key) {
     if (!ok) return false;
   }
   const path = acc.kind === 'jar' ? 'axiomSavings/' + acc.id : 'axiomCards/' + acc.id;
+  const card = acc.kind === 'card' ? getCard(acc.id) : null;
   try {
     await db.ref('users/' + currentUser + '/' + path).remove();
+    if (card) unindexCard(card.number);
     return true;
   } catch (e) {
     console.error(e);
@@ -558,7 +560,10 @@ function renderMore() {
   const letter = String(currentUser || '?').charAt(0).toUpperCase();
   $('axProfileAvatar').textContent = letter;
   $('axHeaderAvatar').textContent = letter;
-  $('axProfileNick').textContent = currentUser || '';
+  $('axProfileNick').textContent = fullNameOf(userData.axiomProfile) || currentUser || '';
+  $('axProfileHandle').textContent = '@' + (currentUser || '');
+  const refCount = Object.keys(userData.axiomRefPaid || {}).length;
+  $('axMoreRef').textContent = refCount ? refCount + ' ' + plural(refCount, 'друг', 'друзі', 'друзів') : '+' + REF_BONUS + ' ₴';
   $('axProfileSub').textContent = cards.length + ' ' + plural(cards.length, 'картка', 'картки', 'карток') +
     ' · ' + jars.length + ' ' + plural(jars.length, 'скарбничка', 'скарбнички', 'скарбничок');
   $('axProfileTotal').textContent = fmt(total) + ' ₴';
@@ -635,6 +640,12 @@ const FAQ = [
    'Обмежує, скільки за добу може піти з основної картки: на перекази в Аксіомі та на вивід, перекази й подарунки в SlotOK. Ставки він не обмежує.'],
   ['Що буде, якщо заблокувати картку?',
    'З неї й на неї не можна переказувати. Блокування основної картки діє і в SlotOK. Розблокувати можна тією ж кнопкою.'],
+  ['Як переказати іншому гравцю?',
+   'Натисни «Переказ» → «Іншому гравцю» й введи 16-значний номер його картки Аксіоми. Перед відправкою побачиш ім’я отримувача — перевір його: переказ не скасовується. Мінімум — 10 ₴.'],
+  ['Як отримати 100 ₴ за друга?',
+   'Дай другові свій нік або посилання з розділу «Ще → Запроси друга». Коли новий користувач відкриє рахунок в Аксіомі й вкаже тебе, 100 ₴ прийдуть на твою основну картку. Максимум — 50 друзів.'],
+  ['Це справжні гроші?',
+   'Ні. Аксіома — ігровий симулятор банку: усі кошти віртуальні, не мають грошової вартості й не виводяться. Деталі — у «Правилах й політиці».'],
   ['Хтось дізнався мій CVV або пароль',
    'Одразу заблокуй картку й зміни пароль у розділі «Ще → Безпека». Нікому не повідомляй CVV і пароль — навіть тим, хто називає себе підтримкою.'],
 ];
@@ -652,9 +663,10 @@ function openSupport() {
 }
 function openAbout() {
   openSheet('Про Аксіому',
-    '<p class="sheet-lead">Аксіома — банк-партнер SlotOK. Той самий акаунт, основна картка підключається до SlotOK кодом, ' +
-      'а додаткові картки й скарбнички живуть лише тут.</p>' +
-    '<div class="req"><div class="req-row"><span>Версія</span><b>3.0</b></div>' +
+    '<p class="sheet-lead">Аксіома — ігровий симулятор банку, партнер SlotOK. Це не банк і не фінансова установа: усі кошти віртуальні. ' +
+      'Той самий акаунт, що в SlotOK; основна картка підключається до SlotOK кодом, а додаткові картки й скарбнички живуть лише тут.</p>' +
+    '<button class="btn btn-quiet btn-block" onclick="openRules()">Правила й політика</button>' +
+    '<div class="req" style="margin-top:14px"><div class="req-row"><span>Версія</span><b>4.0</b></div>' +
       '<div class="req-row"><span>Партнер</span><b>SlotOK</b></div></div>');
 }
 

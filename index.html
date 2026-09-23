@@ -43,6 +43,43 @@
       <button class="btn btn-primary btn-block" id="authBtn" onclick="axLogin()">Увійти</button>
       <div class="auth-foot">Немає акаунту? Зареєструйся у застосунку <b>SlotOK</b> — тут той самий вхід.</div>
     </div>
+    <p class="legal-note">Аксіома — ігровий симулятор банку, а не фінансова установа. Усі кошти віртуальні. <button class="link-btn" onclick="openRules()">Правила й політика</button></p>
+  </div>
+
+  <!-- ══════════════ ВІДКРИТТЯ РАХУНКУ ══════════════ -->
+  <div id="onboardScreen" class="auth-wrap hidden">
+    <form class="auth-card" id="obForm" novalidate>
+      <div class="brand">
+        <div class="brand-mark">А</div>
+        <div>
+          <div class="brand-name">Відкриття рахунку</div>
+          <div class="brand-sub">Акаунт <b id="obNick"></b></div>
+        </div>
+      </div>
+      <div class="auth-title">Як тебе звати?</div>
+      <div class="auth-hint">Інші гравці під час переказу бачитимуть лише ім’я та першу літеру прізвища.</div>
+
+      <label class="field-label" for="obLast">Прізвище</label>
+      <input id="obLast" autocomplete="family-name" maxlength="30" placeholder="Шевченко">
+      <label class="field-label" for="obFirst">Ім’я</label>
+      <input id="obFirst" autocomplete="given-name" maxlength="30" placeholder="Тарас">
+      <label class="field-label" for="obMiddle">По батькові</label>
+      <input id="obMiddle" autocomplete="additional-name" maxlength="30" placeholder="Григорович">
+
+      <div id="obInviteWrap" class="hidden">
+        <label class="field-label" for="obInvite">Код запрошення (необовʼязково)</label>
+        <input id="obInvite" autocomplete="off" maxlength="40" placeholder="Нік друга, який тебе запросив">
+      </div>
+
+      <label class="check">
+        <input type="checkbox" id="obAgree">
+        <span>Я розумію, що Аксіома — не банк, усі кошти віртуальні, і погоджуюсь із <button type="button" class="link-btn" onclick="openRules()">правилами й політикою</button></span>
+      </label>
+
+      <div id="obErr" class="auth-error"></div>
+      <button type="submit" class="btn btn-primary btn-block" id="obBtn">Відкрити рахунок</button>
+      <div class="auth-foot"><button type="button" class="link-btn" onclick="axLogout()">Вийти з акаунта</button></div>
+    </form>
   </div>
 
   <!-- ══════════════ ДОДАТОК ══════════════ -->
@@ -93,6 +130,12 @@
           </div>
         </div>
 
+        <button class="promo" onclick="openReferral()">
+          <span class="promo-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="18" height="13" rx="2"/><path d="M12 8v13"/><path d="M3 12h18"/><path d="M12 8c-1.5-3-5-3.5-5-1.2C7 8 9.5 8 12 8Z"/><path d="M12 8c1.5-3 5-3.5 5-1.2C17 8 14.5 8 12 8Z"/></svg></span>
+          <span class="promo-txt"><b>Приведи друга — отримай 100 ₴</b><small>на основну картку за кожного нового клієнта</small></span>
+          <span class="chev"></span>
+        </button>
+
         <section class="panel" id="axLinkPanel">
           <div class="panel-head"><div class="panel-title">Підключення до SlotOK</div></div>
           <div class="panel-body" id="axLinkBody"></div>
@@ -127,6 +170,7 @@
           <div class="avatar" id="axProfileAvatar">?</div>
           <div class="profile-main">
             <div class="profile-nick" id="axProfileNick"></div>
+            <div class="profile-handle" id="axProfileHandle"></div>
             <div class="profile-sub" id="axProfileSub"></div>
           </div>
           <div class="profile-total"><span>Усього</span><b id="axProfileTotal">0 ₴</b></div>
@@ -134,7 +178,9 @@
 
         <div class="menu-group">
           <div class="menu-cap">Гроші</div>
+          <button class="menu-row" onclick="openP2P()"><span class="mi" data-ic="user"></span><span class="menu-txt">Переказ гравцю за номером картки</span><span class="chev"></span></button>
           <button class="menu-row" onclick="openTransfer()"><span class="mi" data-ic="swap"></span><span class="menu-txt">Переказ між рахунками</span><span class="chev"></span></button>
+          <button class="menu-row" onclick="openReferral()"><span class="mi" data-ic="gift"></span><span class="menu-txt">Запроси друга</span><span class="menu-val" id="axMoreRef"></span><span class="chev"></span></button>
           <button class="menu-row" onclick="openRequisites()"><span class="mi" data-ic="doc"></span><span class="menu-txt">Реквізити основної картки</span><span class="chev"></span></button>
           <button class="menu-row" onclick="openRequisites()"><span class="mi" data-ic="gauge"></span><span class="menu-txt">Денний ліміт</span><span class="menu-val" id="axMoreLimit"></span><span class="chev"></span></button>
           <button class="menu-row" onclick="openNewCard()"><span class="mi" data-ic="cards"></span><span class="menu-txt">Відкрити нову картку</span><span class="chev"></span></button>
@@ -149,12 +195,13 @@
 
         <div class="menu-group">
           <div class="menu-cap">Допомога</div>
+          <button class="menu-row" onclick="openRules()"><span class="mi" data-ic="doc"></span><span class="menu-txt">Правила й політика</span><span class="chev"></span></button>
           <button class="menu-row" onclick="openFaq()"><span class="mi" data-ic="help"></span><span class="menu-txt">Питання й відповіді</span><span class="chev"></span></button>
           <button class="menu-row" onclick="openSupport()"><span class="mi" data-ic="chat"></span><span class="menu-txt">Підтримка</span><span class="chev"></span></button>
           <button class="menu-row" onclick="openAbout()"><span class="mi" data-ic="info"></span><span class="menu-txt">Про Аксіому</span><span class="chev"></span></button>
         </div>
 
-        <div class="app-foot">Аксіома Банк · партнер SlotOK · v3</div>
+        <div class="app-foot">Аксіома Банк · партнер SlotOK · v4<br>Ігровий симулятор банку. Усі кошти віртуальні.</div>
       </section>
     </main>
 
@@ -172,5 +219,6 @@
   <script src="skins.js"></script>
   <script src="app.js"></script>
   <script src="bank.js"></script>
+  <script src="social.js"></script>
 </body>
 </html>

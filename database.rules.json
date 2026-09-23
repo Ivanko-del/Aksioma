@@ -10,12 +10,35 @@
         "authUid": {
           ".write": "auth != null"
         }
-      }
+      },
+      ".indexOn": [
+        "virtualCard/number"
+      ]
     },
     "axiomLinkCodes": {
       "$nick": {
         ".read": "auth != null && root.child('users').child($nick).child('authUid').val() === auth.uid",
         ".write": "auth != null && root.child('users').child($nick).child('authUid').val() === auth.uid"
+      }
+    },
+    "axiomCardIndex": {
+      ".read": "auth != null",
+      "$num": {
+        ".write": "auth != null && ((newData.exists() && root.child('users').child(newData.child('nick').val()).child('authUid').val() === auth.uid) || (!newData.exists() && root.child('users').child(data.child('nick').val()).child('authUid').val() === auth.uid))"
+      }
+    },
+    "axiomPublic": {
+      ".read": "auth != null",
+      "$nick": {
+        ".write": "auth != null && root.child('users').child($nick).child('authUid').val() === auth.uid"
+      }
+    },
+    "axiomReferrals": {
+      "$inviter": {
+        ".read": "auth != null && root.child('users').child($inviter).child('authUid').val() === auth.uid",
+        "$nick": {
+          ".write": "auth != null && !data.exists() && root.child('users').child($nick).child('authUid').val() === auth.uid"
+        }
       }
     }
   }

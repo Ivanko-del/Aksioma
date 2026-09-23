@@ -110,6 +110,7 @@ function icon(name) {
     doc:     '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z"/><path d="M14 3v5h5"/><path d="M9 13h6"/><path d="M9 17h4"/>',
     trash:   '<path d="M4 7h16"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12"/><path d="M9 7V4h6v3"/>',
     target:  '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1" fill="currentColor"/>',
+    gift:    '<rect x="3" y="8" width="18" height="13" rx="2"/><path d="M12 8v13"/><path d="M3 12h18"/><path d="M12 8c-1.5-3-5-3.5-5-1.2C7 8 9.5 8 12 8Z"/><path d="M12 8c1.5-3 5-3.5 5-1.2C17 8 14.5 8 12 8Z"/>',
   };
   return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + (P[name] || '') + '</svg>';
 }
@@ -231,6 +232,10 @@ function axLogout() {
   _railSig = '';
   $('axRail').innerHTML = '';
   if (typeof closeSheet === 'function') closeSheet();
+  if (typeof unwatchReferrals === 'function') unwatchReferrals();
+  if (typeof _indexedSig !== 'undefined') _indexedSig = '';
+  $('onboardScreen').classList.add('hidden');
+  $('obForm').reset();
   if (typeof setTab === 'function') setTab('cards');
   localStorage.removeItem('axioma_nick');
   currentUser = null; userData = null;
@@ -242,7 +247,6 @@ function axLogout() {
 function enterApp(nick) {
   currentUser = nick;
   $('authScreen').classList.add('hidden');
-  $('appScreen').classList.remove('hidden');
   startSync();
 }
 
@@ -260,7 +264,11 @@ function startSync() {
       axLogout();
       return;
     }
-    ensureCard().then(render);
+    // Рахунок в Аксіомі відкривається лише після ПІБ і згоди з правилами.
+    if (!userData.axiomProfile) { showOnboarding(); return; }
+    if (!$('onboardScreen').classList.contains('hidden')) hideOnboarding();
+    $('appScreen').classList.remove('hidden');
+    ensureCard().then(() => { render(); afterSync(); });
   });
 }
 
@@ -539,7 +547,7 @@ function renderDetails() {
   const btn = (fn, ic, label, on) =>
     '<button class="action-btn' + (on ? ' is-on' : '') + '" onclick="' + fn + '()"><span class="ai">' + icon(ic) + '</span><span>' + label + '</span></button>';
   $('axActions').innerHTML =
-    btn('axOpenTransfer', 'swap', 'Переказ', false) +
+    btn('axOpenTransferMenu', 'swap', 'Переказ', false) +
     btn('axToggleCvv', _cvvId === c.id ? 'eyeOff' : 'eye', _cvvId === c.id ? 'Сховати' : 'CVV', _cvvId === c.id) +
     btn('axToggleFreeze', c.frozen ? 'unlock' : 'lock', c.frozen ? 'Розблок.' : 'Блок', c.frozen) +
     btn('axOpenCardSettings', 'sliders', 'Картка', false);
@@ -812,6 +820,7 @@ function axShowAllTx() {
 window.addEventListener('DOMContentLoaded', async () => {
   initCards();
   if (typeof initBank === 'function') initBank();
+  if (typeof initSocial === 'function') initSocial();
   const saved = localStorage.getItem('axioma_nick');
   if (!saved || !db) return;
   try {

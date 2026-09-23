@@ -679,3 +679,59 @@ body.has-sheet .toast.show { transform: translateX(-50%) translateY(0); }
   .actions { grid-template-columns: repeat(4, 1fr); }
   .pill-btn { padding: 7px 10px; font-size: 12px; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   ВІДКРИТТЯ РАХУНКУ, ПРАВИЛА, РЕФЕРАЛ, ПЕРЕКАЗ ГРАВЦЮ
+═══════════════════════════════════════════════════════════════════ */
+.auth-wrap { flex-direction: column; gap: 14px; }
+.legal-note { max-width: 390px; margin: 0; text-align: center; font-size: 12px; line-height: 1.6; color: var(--fg-3); }
+.legal-note .link-btn, .check .link-btn, .auth-foot .link-btn { font-size: inherit; padding: 0; }
+.brand-sub b { color: var(--fg-2); }
+.check { display: flex; gap: 10px; align-items: flex-start; margin-top: 18px; font-size: 13px; color: var(--fg-2); line-height: 1.5; cursor: pointer; }
+.check input { width: 20px; height: 20px; flex-shrink: 0; margin: 1px 0 0; padding: 0; accent-color: var(--brand); }
+
+.rules-flag {
+  padding: 12px 14px; border-radius: 14px; margin-bottom: 14px;
+  background: rgba(245,184,75,.1); border: 1px solid rgba(245,184,75,.3); color: var(--warn);
+  font-weight: 700; font-size: 14px;
+}
+.rules-item h3 { font-size: 14.5px; margin: 14px 0 4px; }
+.rules-item p { font-size: 13.5px; line-height: 1.6; color: var(--fg-2); margin: 0; max-width: 65ch; }
+
+.promo {
+  display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
+  padding: 14px 16px; border-radius: var(--r-lg); color: var(--fg);
+  background: radial-gradient(90% 140% at 0% 0%, rgba(245,184,75,.16), transparent 60%), var(--surface);
+  border: 1px solid rgba(245,184,75,.22);
+}
+.promo-ic { width: 40px; height: 40px; border-radius: 12px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; background: rgba(245,184,75,.14); color: var(--warn); }
+.promo-ic svg { width: 21px; height: 21px; }
+.promo-txt { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.promo-txt b { font-size: 14.5px; }
+.promo-txt small { font-size: 12.5px; color: var(--fg-3); }
+
+.ref-hero { text-align: center; padding: 4px 0 16px; }
+.ref-big { font-family: var(--display); font-size: 34px; font-weight: 600; color: var(--warn); letter-spacing: -.02em; }
+.ref-hero p { margin: 6px auto 0; font-size: 13.5px; color: var(--fg-2); max-width: 32ch; line-height: 1.5; }
+.ref-link { font-size: 12px !important; }
+.ref-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 14px 0 4px; }
+.ref-stats div { background: var(--surface-2); border: 1px solid var(--line); border-radius: 14px; padding: 10px; text-align: center; }
+.ref-stats b { display: block; font-family: var(--mono); font-size: 16px; }
+.ref-stats span { font-size: 11.5px; color: var(--fg-3); }
+
+.choice { display: flex; flex-direction: column; gap: 8px; }
+.choice-row {
+  display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
+  padding: 14px; border-radius: 16px; background: var(--surface-2); border: 1px solid var(--line); color: var(--fg);
+}
+.choice-row:hover { border-color: var(--line-2); }
+.choice-row .menu-txt { display: flex; flex-direction: column; gap: 2px; }
+.choice-row small { font-size: 12.5px; color: var(--fg-3); font-weight: 400; }
+.recipient { display: flex; align-items: center; gap: 10px; min-height: 22px; margin-top: 10px; font-size: 13.5px; }
+.recipient span:last-child { display: flex; flex-direction: column; }
+.recipient small { font-size: 12px; color: var(--fg-3); }
+.recipient .is-err { color: var(--neg); }
+.recipient .is-warn { color: var(--warn); }
+.recipient .is-dim { color: var(--fg-3); }
+.avatar-xs { width: 34px; height: 34px; border-radius: 11px; font-size: 14px; }
+.profile-handle { font-size: 12.5px; color: var(--fg-2); margin-top: 2px; }
