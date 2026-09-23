@@ -18,18 +18,39 @@ const firebaseConfig = {
 };
 
 let db = null;
+let auth = null;
 try {
   if (typeof firebase === 'undefined') throw new Error('Firebase SDK не завантажився');
   if (!firebase.apps.length) firebase.initializeApp(firebaseConfig);
   db = firebase.database();
+  auth = firebase.auth();
 } catch (e) {
   console.error('Firebase init failed:', e);
+}
+
+// Firebase Anonymous Auth — даємо клієнту реальний підписаний UID замість
+// голого localStorage.axioma_nick. Сам по собі він не замінює серверну
+// перевірку пароля (якої тут немає), але дозволяє прив'язати "сесію" до
+// users/<nick>/authUid: чужий нік у localStorage більше не пускає в акаунт,
+// бо UID цього браузера не збігається зі збереженим authUid.
+let _authReadyResolve;
+const authReady = new Promise((resolve) => { _authReadyResolve = resolve; });
+if (auth) {
+  auth.onAuthStateChanged((user) => {
+    if (user) { _authReadyResolve(user); return; }
+    auth.signInAnonymously().catch((e) => console.error('Anonymous auth failed:', e));
+  });
+} else {
+  _authReadyResolve(null);
 }
 
 let currentUser = null;
 let userData = null;
 let _cvvVisible = false;
+let _cvvTimer = null;
 let _codeTimer = null;
+let _creatingCard = false;
+let _generatingCode = false;
 
 // ── Дрібні хелпери ─────────────────────────────────────────────────
 function $(id) { return document.getElementById(id); }
@@ -79,6 +100,26 @@ function genCardNumber(prefix) {
   return body + ((10 - (sum % 10)) % 10);
 }
 
+// ── Rate-limit/lockout спроб входу (per nick, зберігається в localStorage).
+// Це суто клієнтський захист — скидається очищенням localStorage чи іншим
+// браузером, тож не замінює серверний rate-limit, якого поки немає.
+function loginLockKey(nick) { return 'axioma_login_lock_' + nick.toLowerCase(); }
+function getLoginLock(nick) {
+  try { return JSON.parse(localStorage.getItem(loginLockKey(nick))) || { fails: 0, until: 0 }; }
+  catch (e) { return { fails: 0, until: 0 }; }
+}
+function setLoginLock(nick, lock) {
+  try { localStorage.setItem(loginLockKey(nick), JSON.stringify(lock)); } catch (e) { /* localStorage недоступний */ }
+}
+function registerLoginFailure(nick) {
+  const lock = getLoginLock(nick);
+  lock.fails = (lock.fails || 0) + 1;
+  const GRACE = 3; // перші 3 спроби без затримки
+  lock.until = lock.fails > GRACE ? Date.now() + Math.min(300, Math.pow(2, lock.fails - GRACE)) * 1000 : 0;
+  setLoginLock(nick, lock);
+}
+function registerLoginSuccess(nick) { setLoginLock(nick, { fails: 0, until: 0 }); }
+
 // ═══════════════════════════════════════════════════════════════════
 // ВХІД
 // ═══════════════════════════════════════════════════════════════════
@@ -90,24 +131,51 @@ async function axLogin() {
   if (!nick || !pass) { errEl.textContent = 'Введіть нік і пароль'; return; }
   if (!db) { errEl.textContent = 'Немає зʼєднання з базою'; return; }
 
+  const lock = getLoginLock(nick);
+  if (lock.until && lock.until > Date.now()) {
+    errEl.textContent = 'Забагато спроб. Спробуйте через ' + Math.ceil((lock.until - Date.now()) / 1000) + ' с.';
+    return;
+  }
+
   const btn = $('authBtn');
   btn.disabled = true; btn.textContent = 'Вхід…';
   try {
-    const snap = await db.ref('users/' + nick).once('value');
-    const data = snap.val();
-    if (!data) { errEl.textContent = 'Акаунт не знайдено'; return; }
+    if (auth) { try { await authReady; } catch (e) { /* продовжимо навіть без anon-сесії */ } }
+
+    // Читаємо лише хеш пароля, а не весь профіль (баланс, картку тощо) —
+    // тільки він потрібен для перевірки входу.
+    const snap = await db.ref('users/' + nick + '/pass').once('value');
+    const passHash = snap.val();
+    // Одна помилка на "нема акаунта" і "невірний пароль" — щоб не палити,
+    // чи існує нік.
+    if (passHash === null || passHash === undefined) {
+      registerLoginFailure(nick);
+      errEl.textContent = 'Акаунт не знайдено або невірний пароль';
+      return;
+    }
 
     // Перевірка пароля тим самим механізмом, що й у SlotOK (PBKDF2 + сумісність
     // зі старими форматами). needsUpgrade → мовчки перезаписуємо в новий формат.
     let check;
     try {
-      check = await SlotOKPassword.verify(pass, data.pass);
+      check = await SlotOKPassword.verify(pass, passHash);
     } catch (e) {
       errEl.textContent = 'Помилка перевірки пароля'; return;
     }
-    if (!check || !check.ok) { errEl.textContent = 'Невірний пароль'; return; }
+    if (!check || !check.ok) {
+      registerLoginFailure(nick);
+      errEl.textContent = 'Акаунт не знайдено або невірний пароль';
+      return;
+    }
+    registerLoginSuccess(nick);
     if (check.needsUpgrade) {
       try { await db.ref('users/' + nick + '/pass').set(await SlotOKPassword.hash(pass)); } catch (e) { /* необовʼязково */ }
+    }
+
+    // Прив'язуємо цей браузер (anon UID) до ніку — це і є "сесія".
+    if (auth && auth.currentUser) {
+      try { await db.ref('users/' + nick + '/authUid').set(auth.currentUser.uid); }
+      catch (e) { console.error('authUid bind failed:', e); }
     }
 
     localStorage.setItem('axioma_nick', nick);
@@ -121,8 +189,13 @@ async function axLogin() {
 }
 
 function axLogout() {
-  if (currentUser) db.ref('users/' + currentUser).off();
+  if (currentUser) {
+    db.ref('users/' + currentUser).off();
+    db.ref('axiomLinkCodes/' + currentUser).off();
+  }
   if (_codeTimer) { clearInterval(_codeTimer); _codeTimer = null; }
+  if (_cvvTimer) { clearTimeout(_cvvTimer); _cvvTimer = null; }
+  _cvvVisible = false;
   localStorage.removeItem('axioma_nick');
   currentUser = null; userData = null;
   $('appScreen').classList.add('hidden');
@@ -143,31 +216,50 @@ function enterApp(nick) {
 function startSync() {
   db.ref('users/' + currentUser).on('value', (snap) => {
     userData = snap.val() || {};
+    // Якщо на цьому ж ніку залогінились деінде (інший authUid) — цей
+    // браузер втрачає сесію. Так само рятує від підміни localStorage.axioma_nick:
+    // без реального входу authUid ніколи не збігається з нашим anon UID.
+    if (auth && auth.currentUser && userData.authUid && userData.authUid !== auth.currentUser.uid) {
+      toast('Сесію завершено (вхід з іншого пристрою)', 'error');
+      axLogout();
+      return;
+    }
     ensureCard().then(render);
   });
 }
 
 // Створюємо картку Аксіоми, якщо її ще немає. axiomLinked НЕ ставимо —
 // це зробить SlotOK, коли гравець введе згенерований код.
+// _creatingCard блокує паралельні виклики: поки update() не долетить назад
+// через той самий on('value'), другий тригер listener'а не повинен запускати
+// ще один update() — інакше вийде нескінченний цикл записів.
 async function ensureCard() {
   const vc = userData.virtualCard || {};
-  if (vc.number) return; // картка вже є
-  const digits = genCardNumber('4874');
-  const exp = new Date(Date.now() + 3 * 365 * 86400000);
-  const card = {
-    number: digits.replace(/(.{4})(?=.)/g, '$1 '),
-    cvv: String(Math.floor(100 + Math.random() * 900)),
-    expiry: ('0' + (exp.getMonth() + 1)).slice(-2) + '/' + String(exp.getFullYear()).slice(-2),
-    holder: String(currentUser || 'USER').toUpperCase(),
-    frozen: vc.frozen || false,
-    source: 'axiom',
-    axiomOwned: true,
-    balance: vc.balance || 0,
-  };
-  // merge: card дає дефолти, наявні поля vc (баланс, skin, axiomLinked) перемагають
-  const merged = Object.assign({}, card, vc);
-  await db.ref('users/' + currentUser + '/virtualCard').update(merged);
-  userData.virtualCard = merged;
+  if (vc.number || _creatingCard) return;
+  _creatingCard = true;
+  try {
+    const digits = genCardNumber('4874');
+    const exp = new Date(Date.now() + 3 * 365 * 86400000);
+    const card = {
+      number: digits.replace(/(.{4})(?=.)/g, '$1 '),
+      cvv: String(Math.floor(100 + Math.random() * 900)),
+      expiry: ('0' + (exp.getMonth() + 1)).slice(-2) + '/' + String(exp.getFullYear()).slice(-2),
+      holder: String(currentUser || 'USER').toUpperCase(),
+      frozen: vc.frozen || false,
+      source: 'axiom',
+      axiomOwned: true,
+      balance: vc.balance || 0,
+    };
+    // merge: card дає дефолти, наявні поля vc (баланс, skin, axiomLinked) перемагають
+    const merged = Object.assign({}, card, vc);
+    await db.ref('users/' + currentUser + '/virtualCard').update(merged);
+    userData.virtualCard = merged;
+  } catch (e) {
+    console.error(e);
+    toast('Не вдалося створити картку. Спробуйте пізніше.', 'error');
+  } finally {
+    _creatingCard = false;
+  }
 }
 
 // Баланс картки = проєкція мультикарткової моделі SlotOK: якщо картка Аксіоми
@@ -219,7 +311,10 @@ function renderActions(frozen) {
 function axToggleCvv() {
   _cvvVisible = !_cvvVisible;
   render();
-  if (_cvvVisible) setTimeout(() => { _cvvVisible = false; render(); }, 10000);
+  if (_cvvTimer) { clearTimeout(_cvvTimer); _cvvTimer = null; }
+  if (_cvvVisible) {
+    _cvvTimer = setTimeout(() => { _cvvVisible = false; _cvvTimer = null; render(); }, 10000);
+  }
 }
 
 function axCopyNumber() {
@@ -228,10 +323,15 @@ function axCopyNumber() {
   if (navigator.clipboard) navigator.clipboard.writeText(num).then(() => toast('Номер скопійовано', 'success'));
 }
 
-function axToggleFreeze() {
+async function axToggleFreeze() {
   const frozen = !!(userData.virtualCard && userData.virtualCard.frozen);
-  db.ref('users/' + currentUser + '/virtualCard/frozen').set(!frozen);
-  toast(frozen ? 'Картку розблоковано' : 'Картку заблоковано — операції недоступні', frozen ? 'success' : 'info');
+  try {
+    await db.ref('users/' + currentUser + '/virtualCard/frozen').set(!frozen);
+    toast(frozen ? 'Картку розблоковано' : 'Картку заблоковано — операції недоступні', frozen ? 'success' : 'info');
+  } catch (e) {
+    console.error(e);
+    toast('Не вдалося змінити стан картки. Спробуйте ще раз.', 'error');
+  }
 }
 
 // ── Панель підключення до SlotOK ───────────────────────────────────
@@ -251,12 +351,25 @@ function renderLinkPanel() {
     '<button class="btn btn-primary btn-block" onclick="axGenerateCode()">Згенерувати код підключення</button>';
 }
 
-function axGenerateCode() {
-  const code = String(Math.floor(100000 + Math.random() * 900000));
-  const rec = { code: code, used: false, ts: Date.now() };
-  db.ref('axiomLinkCodes/' + currentUser).set(rec);
-  showCode(code, Date.now());
-  watchLinkCode();
+async function axGenerateCode() {
+  if (_generatingCode) return; // блокуємо повторний клік, поки триває генерація
+  _generatingCode = true;
+  try {
+    // Відписуємось від попереднього слухача коду перед тим, як завести новий —
+    // інакше після кількох генерацій поспіль накопичуються "мертві" listeners.
+    db.ref('axiomLinkCodes/' + currentUser).off();
+    const code = String(Math.floor(100000 + Math.random() * 900000));
+    const ts = Date.now();
+    const rec = { code: code, used: false, ts: ts };
+    await db.ref('axiomLinkCodes/' + currentUser).set(rec);
+    showCode(code, ts);
+    watchLinkCode();
+  } catch (e) {
+    console.error(e);
+    toast('Не вдалося згенерувати код. Спробуйте ще раз.', 'error');
+  } finally {
+    _generatingCode = false;
+  }
 }
 
 function showCode(code, ts) {
@@ -274,7 +387,13 @@ function showCode(code, ts) {
     const left = TTL - (Date.now() - ts);
     const lEl = $('axCodeLeft');
     if (!lEl) { clearInterval(_codeTimer); return; }
-    if (left <= 0) { clearInterval(_codeTimer); renderLinkPanel(); return; }
+    if (left <= 0) {
+      clearInterval(_codeTimer);
+      db.ref('axiomLinkCodes/' + currentUser).off();
+      db.ref('axiomLinkCodes/' + currentUser).remove().catch((e) => console.error(e));
+      renderLinkPanel();
+      return;
+    }
     const m = Math.floor(left / 60000), s = Math.floor((left % 60000) / 1000);
     lEl.textContent = m + ':' + ('0' + s).slice(-2);
   };
@@ -290,6 +409,7 @@ function watchLinkCode() {
     if (d && d.used) {
       db.ref('axiomLinkCodes/' + currentUser).off();
       if (_codeTimer) clearInterval(_codeTimer);
+      db.ref('axiomLinkCodes/' + currentUser).remove().catch((e) => console.error(e));
       toast('Картку підключено до SlotOK ✅', 'success');
       renderLinkPanel();
     }
@@ -331,12 +451,23 @@ function axShowAllTx() {
   });
 }
 
-// ── Автовхід за збереженою сесією (той самий підхід, що в SlotOK) ──
-window.addEventListener('DOMContentLoaded', () => {
+// ── Автовхід за збереженою сесією ───────────────────────────────────
+// localStorage.axioma_nick сам по собі нічого не важить: автовхід
+// спрацьовує, лише якщо users/<nick>/authUid збігається з anon UID цього
+// браузера (тобто пароль тут уже перевіряли раніше, через axLogin).
+window.addEventListener('DOMContentLoaded', async () => {
   const saved = localStorage.getItem('axioma_nick');
-  if (saved && db) {
-    db.ref('users/' + saved).once('value').then((snap) => {
-      if (snap.val()) enterApp(saved);
-    }).catch(() => {});
+  if (!saved || !db) return;
+  try {
+    if (auth) await authReady;
+    const snap = await db.ref('users/' + saved).once('value');
+    const data = snap.val();
+    if (data && auth && auth.currentUser && data.authUid && data.authUid === auth.currentUser.uid) {
+      enterApp(saved);
+    } else {
+      localStorage.removeItem('axioma_nick');
+    }
+  } catch (e) {
+    console.error(e);
   }
 });

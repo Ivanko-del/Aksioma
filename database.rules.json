@@ -1,0 +1,22 @@
+{
+  "rules": {
+    "users": {
+      "$nick": {
+        ".read": "auth != null && (!data.child('authUid').exists() || data.child('authUid').val() === auth.uid)",
+        ".write": "auth != null && (!data.child('authUid').exists() || data.child('authUid').val() === auth.uid)",
+        "pass": {
+          ".read": "auth != null"
+        },
+        "authUid": {
+          ".write": "auth != null"
+        }
+      }
+    },
+    "axiomLinkCodes": {
+      "$nick": {
+        ".read": "auth != null && root.child('users').child($nick).child('authUid').val() === auth.uid",
+        ".write": "auth != null && root.child('users').child($nick).child('authUid').val() === auth.uid"
+      }
+    }
+  }
+}
