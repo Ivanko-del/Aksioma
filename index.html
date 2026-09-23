@@ -54,110 +54,116 @@
       </div>
       <div class="header-right">
         <span class="user-nick" id="axUserNick"></span>
-        <button class="icon-btn" onclick="axLogout()" title="Вийти" aria-label="Вийти">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/></svg>
-        </button>
+        <button class="avatar avatar-sm" id="axHeaderAvatar" onclick="setTab('more')" aria-label="Профіль і налаштування">?</button>
       </div>
     </header>
 
     <main class="app-main">
-      <!-- 3D-картка: тап — фліп, курсор/гіроскоп — нахил -->
-      <div class="card-stage" id="axCardStage">
-        <div class="card3d" id="axCard" role="button" tabindex="0" aria-pressed="false" aria-label="Картка Аксіома. Натисни, щоб перевернути">
-          <div class="card3d-tilt">
-            <div class="card3d-flip">
-              <div class="card-edge" style="--z:-1"></div>
-              <div class="card-edge" style="--z:-0.5"></div>
-              <div class="card-edge" style="--z:0"></div>
-              <div class="card-edge" style="--z:0.5"></div>
-              <div class="card-edge" style="--z:1"></div>
+      <!-- ═════ КАРТКИ ═════ -->
+      <section class="view" data-view="cards" id="viewCards">
+        <div class="view-head">
+          <div class="view-title">Мої картки <span class="count" id="axCardsCount"></span></div>
+          <button class="pill-btn" onclick="openNewCard()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>Відкрити картку</button>
+        </div>
 
-              <div class="face face-front">
-                <div class="face-skin" id="axSkinFront"></div>
-                <div class="face-glare"></div>
-                <div class="face-content">
-                  <div class="fc-top">
-                    <div class="fc-bank">Аксіома<small>debit · UAH</small></div>
-                    <div class="fc-badge" id="axCardBadge"></div>
-                  </div>
-                  <div class="fc-mid">
-                    <div class="chip"></div>
-                    <svg class="contactless" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8.5 8.5a5 5 0 0 1 0 7"/><path d="M12 6a8.5 8.5 0 0 1 0 12"/><path d="M15.5 3.5a12 12 0 0 1 0 17"/></svg>
-                  </div>
-                  <div class="fc-number" id="axCardNumber">•••• •••• •••• ••••</div>
-                  <div class="fc-bottom">
-                    <div>
-                      <div class="fc-cap">Власник</div>
-                      <div class="fc-val" id="axCardHolder">—</div>
-                    </div>
-                    <div>
-                      <div class="fc-cap">Діє до</div>
-                      <div class="fc-val" id="axCardExpiry">••/••</div>
-                    </div>
-                    <div class="fc-mark" aria-hidden="true">∴</div>
-                  </div>
-                </div>
-                <div class="face-frozen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="11" width="17" height="10.5" rx="2.5"/><path d="M7.5 11V7a4.5 4.5 0 0 1 9 0v4"/></svg><span>Заблоковано</span></div>
-              </div>
+        <!-- 3D-картки: гортай, тап — фліп, курсор/гіроскоп — нахил -->
+        <div class="cards-rail" id="axRail" aria-label="Картки"></div>
+        <div class="rail-dots" id="axDots"></div>
 
-              <div class="face face-back">
-                <div class="face-skin" id="axSkinBack"></div>
-                <div class="face-glare"></div>
-                <div class="back-stripe"></div>
-                <div class="back-body">
-                  <div class="back-sign-row">
-                    <div class="back-sign" id="axCardSign">—</div>
-                    <div class="back-cvv"><small>CVV</small><b id="axCardCvv">•••</b></div>
-                  </div>
-                  <div class="back-fine">Картку випустив Аксіома Банк для розрахунків у SlotOK. Не передавай CVV нікому — навіть «підтримці».</div>
-                  <div class="back-foot"><span>Аксіома Банк · 24/7</span><b aria-hidden="true">∴</b></div>
-                </div>
-                <div class="face-frozen"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="11" width="17" height="10.5" rx="2.5"/><path d="M7.5 11V7a4.5 4.5 0 0 1 9 0v4"/></svg><span>Заблоковано</span></div>
-              </div>
-            </div>
+        <div class="card-meta">
+          <span class="skin-chip" id="axSkinChip"></span>
+          <span class="flip-hint"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 15.5-6.2L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16"/><path d="M3 21v-5h5"/></svg>Торкнись, щоб перевернути</span>
+        </div>
+
+        <div class="balance-box">
+          <div>
+            <div class="balance-cap" id="axCardTitle">Основна</div>
+            <div class="balance-amount"><span id="axBalance">0</span><span class="cur">₴</span></div>
+          </div>
+          <span class="status-pill" id="axStatus">Активна</span>
+        </div>
+
+        <div class="actions" id="axActions"></div>
+
+        <div class="month">
+          <div class="month-cap">За <span id="axMonthName"></span></div>
+          <div class="month-row">
+            <div><span class="month-lbl">Надійшло</span><b class="pos" id="axMonthIn">+0 ₴</b></div>
+            <div><span class="month-lbl">Витрачено</span><b id="axMonthOut">−0 ₴</b></div>
           </div>
         </div>
-        <div class="card-shadow"></div>
-      </div>
 
-      <div class="card-meta">
-        <span class="skin-chip" id="axSkinChip"></span>
-        <span class="flip-hint"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 15.5-6.2L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16"/><path d="M3 21v-5h5"/></svg>Торкнись, щоб перевернути</span>
-      </div>
+        <section class="panel" id="axLinkPanel">
+          <div class="panel-head"><div class="panel-title">Підключення до SlotOK</div></div>
+          <div class="panel-body" id="axLinkBody"></div>
+        </section>
 
-      <!-- Баланс -->
-      <div class="balance-box">
-        <div>
-          <div class="balance-cap">Баланс картки</div>
-          <div class="balance-amount"><span id="axBalance">0</span><span class="cur">₴</span></div>
-        </div>
-        <span class="status-pill" id="axStatus">Активна</span>
-      </div>
-
-      <!-- Швидкі дії -->
-      <div class="actions" id="axActions"></div>
-
-      <!-- Код підключення до SlotOK -->
-      <section class="panel" id="axLinkPanel">
-        <div class="panel-head">
-          <div class="panel-title">Підключення до SlotOK</div>
-        </div>
-        <div class="panel-body" id="axLinkBody"></div>
+        <section class="panel">
+          <div class="panel-head">
+            <div class="panel-title">Виписка</div>
+            <button class="link-btn" onclick="axShowAllTx()">Усі операції</button>
+          </div>
+          <div class="panel-body is-flush" id="axTxList"><div class="muted">Операцій ще немає</div></div>
+        </section>
       </section>
 
-      <!-- Історія / виписка -->
-      <section class="panel">
-        <div class="panel-head">
-          <div class="panel-title">Виписка</div>
-          <button class="link-btn" onclick="axShowAllTx()">Усі операції</button>
+      <!-- ═════ ЗАОЩАДЖЕННЯ ═════ -->
+      <section class="view hidden" data-view="savings" id="viewSavings">
+        <div class="sav-hero">
+          <div class="balance-cap">Усього в скарбничках</div>
+          <div class="balance-amount"><span id="axSavTotal">0</span><span class="cur">₴</span></div>
+          <div class="sav-sub" id="axSavCount"></div>
+          <div class="btn-row">
+            <button class="btn btn-primary" onclick="openNewJar()">Нова скарбничка</button>
+            <button class="btn btn-quiet" onclick="openTransfer()">Переказ</button>
+          </div>
         </div>
-        <div class="panel-body is-flush" id="axTxList">
-          <div class="muted">Операцій ще немає</div>
-        </div>
+        <div class="jar-list" id="axJarList"></div>
       </section>
 
-      <div class="app-foot">Аксіома Банк · партнер SlotOK · v2</div>
+      <!-- ═════ ЩЕ ═════ -->
+      <section class="view hidden" data-view="more" id="viewMore">
+        <div class="profile">
+          <div class="avatar" id="axProfileAvatar">?</div>
+          <div class="profile-main">
+            <div class="profile-nick" id="axProfileNick"></div>
+            <div class="profile-sub" id="axProfileSub"></div>
+          </div>
+          <div class="profile-total"><span>Усього</span><b id="axProfileTotal">0 ₴</b></div>
+        </div>
+
+        <div class="menu-group">
+          <div class="menu-cap">Гроші</div>
+          <button class="menu-row" onclick="openTransfer()"><span class="mi" data-ic="swap"></span><span class="menu-txt">Переказ між рахунками</span><span class="chev"></span></button>
+          <button class="menu-row" onclick="openRequisites()"><span class="mi" data-ic="doc"></span><span class="menu-txt">Реквізити основної картки</span><span class="chev"></span></button>
+          <button class="menu-row" onclick="openRequisites()"><span class="mi" data-ic="gauge"></span><span class="menu-txt">Денний ліміт</span><span class="menu-val" id="axMoreLimit"></span><span class="chev"></span></button>
+          <button class="menu-row" onclick="openNewCard()"><span class="mi" data-ic="cards"></span><span class="menu-txt">Відкрити нову картку</span><span class="chev"></span></button>
+          <button class="menu-row" onclick="goMainCard()"><span class="mi" data-ic="check"></span><span class="menu-txt">Підключення до SlotOK</span><span class="menu-val" id="axMoreLink"></span><span class="chev"></span></button>
+        </div>
+
+        <div class="menu-group">
+          <div class="menu-cap">Безпека</div>
+          <button class="menu-row" onclick="openPasswordChange()"><span class="mi" data-ic="key"></span><span class="menu-txt">Змінити пароль</span><span class="chev"></span></button>
+          <button class="menu-row is-danger" onclick="axLogout()"><span class="mi" data-ic="logout"></span><span class="menu-txt">Вийти з акаунта</span></button>
+        </div>
+
+        <div class="menu-group">
+          <div class="menu-cap">Допомога</div>
+          <button class="menu-row" onclick="openFaq()"><span class="mi" data-ic="help"></span><span class="menu-txt">Питання й відповіді</span><span class="chev"></span></button>
+          <button class="menu-row" onclick="openSupport()"><span class="mi" data-ic="chat"></span><span class="menu-txt">Підтримка</span><span class="chev"></span></button>
+          <button class="menu-row" onclick="openAbout()"><span class="mi" data-ic="info"></span><span class="menu-txt">Про Аксіому</span><span class="chev"></span></button>
+        </div>
+
+        <div class="app-foot">Аксіома Банк · партнер SlotOK · v3</div>
+      </section>
     </main>
+
+    <!-- Нижня панель -->
+    <nav class="tabbar" role="tablist" aria-label="Розділи">
+      <button class="tab is-on" data-tab="cards" role="tab" aria-selected="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="3"/><path d="M2.5 10h19"/><path d="M6.5 15h4"/></svg><span>Картки</span></button>
+      <button class="tab" data-tab="savings" role="tab" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M19 11.5c0-3.6-3.1-6.5-7-6.5S5 7.9 5 11.5c0 1.9.9 3.6 2.3 4.8L8 19h3v-1.1c.3 0 .7.1 1 .1s.7 0 1-.1V19h3l.7-2.7c.8-.7 1.5-1.5 1.8-2.3H21v-3h-2.1"/><circle cx="15.5" cy="10.5" r=".6" fill="currentColor"/><path d="M10 5.2V4.5A1.5 1.5 0 0 1 11.5 3h1"/></svg><span>Заощадження</span></button>
+      <button class="tab" data-tab="more" role="tab" aria-selected="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="5" cy="12" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/><circle cx="19" cy="12" r="1.3" fill="currentColor"/></svg><span>Ще</span></button>
+    </nav>
   </div>
 
   <div id="toast" class="toast"></div>
@@ -165,5 +171,6 @@
   <script src="password.js"></script>
   <script src="skins.js"></script>
   <script src="app.js"></script>
+  <script src="bank.js"></script>
 </body>
 </html>

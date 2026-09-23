@@ -52,12 +52,14 @@ if (auth) {
 
 let currentUser = null;
 let userData = null;
-let _cvvVisible = false;
+let _cvvId = null;     // картка, в якої зараз видно CVV
 let _cvvTimer = null;
 let _codeTimer = null;
 let _creatingCard = false;
 let _generatingCode = false;
-let _flipped = false;
+let _flippedIds = {};  // id картки → перевернута
+let _selId = 'axiom';  // вибрана в каруселі картка
+let _pendingSelId = null; // щойно відкрита картка, яку виберемо, коли вона приїде з бази
 let _activeCode = null; // { code, ts } — поки код не спожито/не протух
 
 // ── Дрібні хелпери ─────────────────────────────────────────────────
@@ -91,6 +93,23 @@ function icon(name) {
     inflow:  '<path d="M17 7 7 17"/><path d="M17 17H7V7"/>',
     outflow: '<path d="M7 17 17 7"/><path d="M7 7h10v10"/>',
     flip:    '<path d="M3 12a9 9 0 0 1 15.5-6.2L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16"/><path d="M3 21v-5h5"/>',
+    swap:    '<path d="M7 4 3 8l4 4"/><path d="M3 8h14"/><path d="m17 20 4-4-4-4"/><path d="M21 16H7"/>',
+    sliders: '<path d="M4 6h10"/><path d="M18 6h2"/><circle cx="16" cy="6" r="2"/><path d="M4 12h4"/><path d="M12 12h8"/><circle cx="10" cy="12" r="2"/><path d="M4 18h12"/><path d="M20 18h0"/><circle cx="18" cy="18" r="2"/>',
+    plus:    '<path d="M12 5v14"/><path d="M5 12h14"/>',
+    chevron: '<path d="m9 6 6 6-6 6"/>',
+    cards:   '<rect x="2.5" y="5" width="19" height="14" rx="3"/><path d="M2.5 10h19"/><path d="M6.5 15h4"/>',
+    piggy:   '<path d="M19 11.5c0-3.6-3.1-6.5-7-6.5S5 7.9 5 11.5c0 1.9.9 3.6 2.3 4.8L8 19h3v-1.1c.3 0 .7.1 1 .1s.7 0 1-.1V19h3l.7-2.7c.8-.7 1.5-1.5 1.8-2.3H21v-3h-2.1"/><circle cx="15.5" cy="10.5" r=".6" fill="currentColor"/><path d="M10 5.2V4.5A1.5 1.5 0 0 1 11.5 3h1"/>',
+    dots:    '<circle cx="5" cy="12" r="1.3" fill="currentColor"/><circle cx="12" cy="12" r="1.3" fill="currentColor"/><circle cx="19" cy="12" r="1.3" fill="currentColor"/>',
+    user:    '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+    key:     '<circle cx="8" cy="15" r="4"/><path d="m11 12 9-9"/><path d="m16 7 3 3"/>',
+    gauge:   '<path d="M12 14 16 9"/><path d="M3.5 17a9 9 0 1 1 17 0"/>',
+    help:    '<circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 0 1 4.9.8c0 1.7-2.4 2.2-2.4 3.7"/><circle cx="12" cy="17" r=".6" fill="currentColor"/>',
+    chat:    '<path d="M21 12a8 8 0 0 1-11.8 7L4 20l1.1-4.6A8 8 0 1 1 21 12Z"/>',
+    info:    '<circle cx="12" cy="12" r="9"/><path d="M12 11v6"/><circle cx="12" cy="7.5" r=".6" fill="currentColor"/>',
+    logout:  '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="m16 17 5-5-5-5"/><path d="M21 12H9"/>',
+    doc:     '<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8Z"/><path d="M14 3v5h5"/><path d="M9 13h6"/><path d="M9 17h4"/>',
+    trash:   '<path d="M4 7h16"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12"/><path d="M9 7V4h6v3"/>',
+    target:  '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1" fill="currentColor"/>',
   };
   return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' + (P[name] || '') + '</svg>';
 }
@@ -204,9 +223,15 @@ function axLogout() {
   }
   if (_codeTimer) { clearInterval(_codeTimer); _codeTimer = null; }
   if (_cvvTimer) { clearTimeout(_cvvTimer); _cvvTimer = null; }
-  _cvvVisible = false;
+  _cvvId = null;
   _activeCode = null;
-  setFlipped(false);
+  _flippedIds = {};
+  _selId = 'axiom';
+  _pendingSelId = null;
+  _railSig = '';
+  $('axRail').innerHTML = '';
+  if (typeof closeSheet === 'function') closeSheet();
+  if (typeof setTab === 'function') setTab('cards');
   localStorage.removeItem('axioma_nick');
   currentUser = null; userData = null;
   $('appScreen').classList.add('hidden');
@@ -273,49 +298,83 @@ async function ensureCard() {
   }
 }
 
-// Баланс картки = проєкція мультикарткової моделі SlotOK: якщо картка Аксіоми
-// зараз активна в SlotOK, її живий баланс лежить у users/<nick>/balance;
-// інакше — власний virtualCard/balance.
-function cardBalance() {
-  const vc = userData.virtualCard || {};
+// ═══════════════════════════════════════════════════════════════════
+// КАРТКИ
+// Основна картка ('axiom') — це users/<nick>/virtualCard, її бачить SlotOK.
+// Додаткові — users/<nick>/axiomCards/<id>: окремі рахунки, про які SlotOK
+// не знає. Баланс основної — проєкція мультикарткової моделі SlotOK: коли
+// вона активна в SlotOK, живі гроші лежать у users/<nick>/balance.
+// ═══════════════════════════════════════════════════════════════════
+const KEY_RE = /^[-\w]{1,40}$/;
+const MAX_EXTRA_CARDS = 4;
+const AX_CARD_TYPES = {
+  white:    { name: 'Біла',       kind: 'debit · UAH',   desc: 'Окремий рахунок для щоденних витрат', chip: true, light: true,
+              bg: 'radial-gradient(120% 90% at 0% 0%, #ffffff 0%, transparent 60%), linear-gradient(150deg, #f4f3f0 0%, #e4e2dc 100%)' },
+  virtual:  { name: 'Віртуальна', kind: 'virtual · UAH', desc: 'Лише номер і CVV — для оплат онлайн', chip: false, light: false,
+              bg: 'radial-gradient(90% 90% at 100% 0%, rgba(90,220,255,.55), transparent 60%), radial-gradient(80% 90% at 0% 100%, rgba(124,131,255,.6), transparent 60%), linear-gradient(135deg, #0d1330, #1a2150)' },
+  graphite: { name: 'Графіт',     kind: 'debit · UAH',   desc: 'Стриманий металевий дизайн', chip: true, light: false,
+              bg: 'repeating-linear-gradient(92deg, rgba(255,255,255,.03) 0 2px, transparent 2px 4px), linear-gradient(135deg, #3a3d46 0%, #1c1e24 55%, #2c2f37 100%)' },
+};
+
+function cardIdsOf(u) {
   const ids = [];
-  if (vc.axiomLinked) ids.push('axiom');
-  if (userData.linkedCards) Object.keys(userData.linkedCards).forEach((k) => ids.push(k));
-  const active = (userData.activeCardId && ids.indexOf(userData.activeCardId) >= 0) ? userData.activeCardId : ids[0];
-  return active === 'axiom' ? (userData.balance || 0) : (vc.balance || 0);
+  if (u && u.virtualCard && u.virtualCard.axiomLinked) ids.push('axiom');
+  if (u && u.linkedCards) Object.keys(u.linkedCards).forEach((k) => ids.push(k));
+  return ids;
+}
+function activeCardIdOf(u) {
+  const ids = cardIdsOf(u);
+  if (!ids.length) return null;
+  return (u.activeCardId && ids.indexOf(u.activeCardId) >= 0) ? u.activeCardId : ids[0];
+}
+// Той самий вибір, що cardBalancePath() у SlotOK.
+function mainBalPath(u) { return activeCardIdOf(u) === 'axiom' ? 'balance' : 'virtualCard/balance'; }
+function cardBalance() {
+  const u = userData || {};
+  return mainBalPath(u) === 'balance' ? (Number(u.balance) || 0) : (Number((u.virtualCard || {}).balance) || 0);
+}
+function digitsTail(n) { return String(n || '').replace(/\D/g, '').slice(-4) || '••••'; }
+
+function getCards() {
+  const u = userData || {};
+  const vc = u.virtualCard || {};
+  const out = [{
+    id: 'axiom', main: true, title: 'Основна', kind: 'debit · UAH', chip: true,
+    number: vc.number, cvv: vc.cvv, expiry: vc.expiry, holder: vc.holder,
+    frozen: !!vc.frozen, linked: !!vc.axiomLinked, dayLimit: Math.max(0, Number(vc.dayLimit) || 0),
+    balance: cardBalance(), balPath: mainBalPath(u), recPath: 'virtualCard', skin: resolveSkin(vc),
+  }];
+  const extra = u.axiomCards || {};
+  Object.keys(extra).filter((k) => KEY_RE.test(k) && extra[k])
+    .sort((a, b) => (extra[a].createdAt || 0) - (extra[b].createdAt || 0))
+    .forEach((id) => {
+      const c = extra[id];
+      const t = AX_CARD_TYPES[c.type] || AX_CARD_TYPES.white;
+      out.push({
+        id: id, main: false, title: t.name, kind: t.kind, chip: t.chip,
+        number: c.number, cvv: c.cvv, expiry: c.expiry, holder: c.holder,
+        frozen: !!c.frozen, linked: false, dayLimit: 0,
+        balance: Number(c.balance) || 0, balPath: 'axiomCards/' + id + '/balance', recPath: 'axiomCards/' + id,
+        skin: { name: t.name, bg: t.bg, light: t.light, builtin: true },
+      });
+    });
+  return out;
+}
+function getCard(id) { return getCards().find((c) => c.id === id) || null; }
+function selectedCard() { return getCard(_selId) || getCard('axiom'); }
+
+function newCardData(holder) {
+  const digits = genCardNumber('4874');
+  const exp = new Date(Date.now() + 3 * 365 * 86400000);
+  return {
+    number: digits.replace(/(.{4})(?=.)/g, '$1 '),
+    cvv: String(Math.floor(100 + Math.random() * 900)),
+    expiry: ('0' + (exp.getMonth() + 1)).slice(-2) + '/' + String(exp.getFullYear()).slice(-2),
+    holder: String(holder || 'USER').toUpperCase(),
+  };
 }
 
-// ═══════════════════════════════════════════════════════════════════
-// РЕНДЕР
-// ═══════════════════════════════════════════════════════════════════
-function render() {
-  const vc = userData.virtualCard || {};
-  const frozen = !!vc.frozen;
-  const holder = vc.holder || (currentUser || '').toUpperCase();
-
-  $('axUserNick').textContent = currentUser || '';
-  $('axCardNumber').textContent = vc.number || '•••• •••• •••• ••••';
-  $('axCardHolder').textContent = holder;
-  $('axCardSign').textContent = holder;
-  $('axCardExpiry').textContent = vc.expiry || '••/••';
-  $('axCardCvv').textContent = _cvvVisible ? (vc.cvv || '•••') : '•••';
-  $('axCardBadge').innerHTML = vc.axiomLinked
-    ? '<span class="linked-badge">' + icon('check') + ' SlotOK</span>'
-    : '';
-  $('axCard').classList.toggle('is-frozen', frozen);
-  const st = $('axStatus');
-  st.textContent = frozen ? 'Заблокована' : 'Активна';
-  st.classList.toggle('is-frozen', frozen);
-  applySkin(vc);
-
-  $('axBalance').textContent = fmt(cardBalance());
-
-  renderActions(frozen);
-  renderLinkPanel();
-  renderTx();
-}
-
-// ── Скін картки зі SlotOK ──────────────────────────────────────────
+// ── Скін основної картки зі SlotOK ─────────────────────────────────
 // SlotOK зберігає users/<nick>/virtualCard/skin (id з SLOTOK_SKINS) або
 // 'custom-photo' + customPhotoUrl (JPEG data: URL, стиснутий до 500px).
 const LIGHT_SKINS = { minimal: 1, ivory: 1 };
@@ -341,57 +400,212 @@ function resolveSkin(vc) {
   return { name: s.name, bg: bg, dot: s.prev, light: light };
 }
 
-function applySkin(vc) {
-  const skin = resolveSkin(vc);
-  const bg = skin ? skin.bg : '';
-  $('axSkinFront').style.background = bg;
-  $('axSkinBack').style.background = bg;
-  $('axCard').classList.toggle('is-light', !!(skin && skin.light));
-  $('axSkinChip').innerHTML = skin
-    ? '<span class="skin-dot" style="background:' + esc(skin.dot) + '"></span>Скін «' + esc(skin.name) + '» зі SlotOK'
-    : '<span class="skin-dot" style="background:linear-gradient(135deg,#6b5cff,#c06bff)"></span>Стандартний дизайн · скін змінюється в SlotOK';
+// ═══════════════════════════════════════════════════════════════════
+// РЕНДЕР
+// ═══════════════════════════════════════════════════════════════════
+function render() {
+  if (!userData) return;
+  $('axUserNick').textContent = currentUser || '';
+  renderCards();
+  renderDetails();
+  if (typeof renderSavings === 'function') renderSavings();
+  if (typeof renderMore === 'function') renderMore();
 }
 
-function renderActions(frozen) {
-  const el = $('axActions');
+// ── Карусель карток ────────────────────────────────────────────────
+const LOCK_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="11" width="17" height="10.5" rx="2.5"/><path d="M7.5 11V7a4.5 4.5 0 0 1 9 0v4"/></svg>';
+const CONTACTLESS_SVG = '<svg class="contactless" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8.5 8.5a5 5 0 0 1 0 7"/><path d="M12 6a8.5 8.5 0 0 1 0 12"/><path d="M15.5 3.5a12 12 0 0 1 0 17"/></svg>';
+
+function cardTpl(c) {
+  const frozen = '<div class="face-frozen">' + LOCK_SVG + '<span>Заблоковано</span></div>';
+  const edges = [-1, -0.5, 0, 0.5, 1].map((z) => '<div class="card-edge" style="--z:' + z + '"></div>').join('');
+  return '<div class="rail-slide" data-id="' + c.id + '">' +
+    '<div class="card-stage">' +
+      '<div class="card3d" role="button" tabindex="0" aria-pressed="false" aria-label="Картка ' + esc(c.title) + '. Натисни, щоб перевернути">' +
+        '<div class="card3d-tilt"><div class="card3d-flip">' + edges +
+          '<div class="face face-front">' +
+            '<div class="face-skin" data-f="skin"></div><div class="face-glare"></div>' +
+            '<div class="face-content">' +
+              '<div class="fc-top"><div class="fc-bank">Аксіома<small>' + esc(c.kind) + '</small></div><div class="fc-badge" data-f="badge"></div></div>' +
+              '<div class="fc-mid">' + (c.chip ? '<div class="chip"></div>' + CONTACTLESS_SVG : '<span class="fc-virtual">online only</span>') + '</div>' +
+              '<div class="fc-number" data-f="number"></div>' +
+              '<div class="fc-bottom">' +
+                '<div><div class="fc-cap">Власник</div><div class="fc-val" data-f="holder"></div></div>' +
+                '<div><div class="fc-cap">Діє до</div><div class="fc-val" data-f="expiry"></div></div>' +
+                '<div class="fc-mark" aria-hidden="true">∴</div>' +
+              '</div>' +
+            '</div>' + frozen +
+          '</div>' +
+          '<div class="face face-back">' +
+            '<div class="face-skin" data-f="skin"></div><div class="face-glare"></div>' +
+            '<div class="back-stripe"></div>' +
+            '<div class="back-body">' +
+              '<div class="back-sign-row"><div class="back-sign" data-f="sign"></div><div class="back-cvv"><small>CVV</small><b data-f="cvv">•••</b></div></div>' +
+              '<div class="back-fine">Картку випустив Аксіома Банк. Не передавай CVV нікому — навіть «підтримці».</div>' +
+              '<div class="back-foot"><span>Аксіома Банк · 24/7</span><b aria-hidden="true">∴</b></div>' +
+            '</div>' + frozen +
+          '</div>' +
+        '</div></div>' +
+      '</div>' +
+      '<div class="card-shadow"></div>' +
+    '</div>' +
+  '</div>';
+}
+
+let _railSig = '';
+function renderCards() {
+  const rail = $('axRail');
+  const cards = getCards();
+  if (_pendingSelId && cards.some((c) => c.id === _pendingSelId)) { _selId = _pendingSelId; _pendingSelId = null; }
+  if (!cards.some((c) => c.id === _selId)) _selId = 'axiom';
+  const sig = cards.map((c) => c.id).join('|');
+  if (sig !== _railSig) {
+    _railSig = sig;
+    rail.innerHTML = cards.map(cardTpl).join('');
+    rail.classList.toggle('is-single', cards.length === 1);
+    requestAnimationFrame(() => scrollToCard(_selId, false));
+  }
+  cards.forEach((c) => {
+    const slide = rail.querySelector('.rail-slide[data-id="' + c.id + '"]');
+    if (!slide) return;
+    const card = slide.querySelector('.card3d');
+    const f = (name) => slide.querySelectorAll('[data-f="' + name + '"]');
+    const holder = c.holder || String(currentUser || '').toUpperCase();
+    f('number').forEach((el) => { el.textContent = c.number || '•••• •••• •••• ••••'; });
+    f('holder').forEach((el) => { el.textContent = holder; });
+    f('sign').forEach((el) => { el.textContent = holder; });
+    f('expiry').forEach((el) => { el.textContent = c.expiry || '••/••'; });
+    f('cvv').forEach((el) => { el.textContent = _cvvId === c.id ? (c.cvv || '•••') : '•••'; });
+    f('badge').forEach((el) => { el.innerHTML = c.linked ? '<span class="linked-badge">' + icon('check') + ' SlotOK</span>' : ''; });
+    f('skin').forEach((el) => { el.style.background = c.skin ? c.skin.bg : ''; });
+    card.classList.toggle('is-light', !!(c.skin && c.skin.light));
+    card.classList.toggle('is-frozen', c.frozen);
+    card.classList.toggle('is-flipped', !!_flippedIds[c.id]);
+    card.setAttribute('aria-pressed', String(!!_flippedIds[c.id]));
+    slide.classList.toggle('is-selected', c.id === _selId);
+  });
+  const dots = $('axDots');
+  dots.innerHTML = cards.length > 1
+    ? cards.map((c) => '<button class="dot' + (c.id === _selId ? ' is-on' : '') + '" data-id="' + c.id + '" aria-label="Картка ' + esc(c.title) + '"></button>').join('')
+    : '';
+  $('axCardsCount').textContent = cards.length + '/' + (MAX_EXTRA_CARDS + 1);
+}
+
+function scrollToCard(id, smooth) {
+  const rail = $('axRail');
+  const slide = rail.querySelector('.rail-slide[data-id="' + id + '"]');
+  if (!slide) return;
+  rail.scrollTo({ left: slide.offsetLeft - (rail.clientWidth - slide.clientWidth) / 2, behavior: smooth ? 'smooth' : 'auto' });
+}
+
+function selectCard(id) {
+  if (id === _selId || !getCard(id)) return;
+  _selId = id;
+  if (_cvvId && _cvvId !== id) hideCvv();
+  renderCards();
+  renderDetails();
+}
+
+let _railScrollFrame = 0;
+function onRailScroll() {
+  cancelAnimationFrame(_railScrollFrame);
+  _railScrollFrame = requestAnimationFrame(() => {
+    const rail = $('axRail');
+    const center = rail.scrollLeft + rail.clientWidth / 2;
+    let best = null, bestDist = Infinity;
+    rail.querySelectorAll('.rail-slide').forEach((s) => {
+      const d = Math.abs(s.offsetLeft + s.clientWidth / 2 - center);
+      if (d < bestDist) { bestDist = d; best = s.dataset.id; }
+    });
+    if (best) selectCard(best);
+  });
+}
+
+// ── Деталі вибраної картки ─────────────────────────────────────────
+function renderDetails() {
+  const c = selectedCard();
+  if (!c) return;
+  $('axCardTitle').textContent = c.title + ' · ' + digitsTail(c.number);
+  const st = $('axStatus');
+  st.textContent = c.frozen ? 'Заблокована' : 'Активна';
+  st.classList.toggle('is-frozen', c.frozen);
+  $('axBalance').textContent = fmt(c.balance);
+  $('axSkinChip').innerHTML = c.main
+    ? (c.skin
+        ? '<span class="skin-dot" style="background:' + esc(c.skin.dot) + '"></span>Скін «' + esc(c.skin.name) + '» зі SlotOK'
+        : '<span class="skin-dot" style="background:linear-gradient(135deg,#6b5cff,#c06bff)"></span>Стандартний дизайн · скін змінюється в SlotOK')
+    : '<span class="skin-dot" style="background:' + esc(c.skin.bg) + '"></span>Працює лише в Аксіомі';
+
   const btn = (fn, ic, label, on) =>
     '<button class="action-btn' + (on ? ' is-on' : '') + '" onclick="' + fn + '()"><span class="ai">' + icon(ic) + '</span><span>' + label + '</span></button>';
-  el.innerHTML =
-    btn('axToggleCvv', _cvvVisible ? 'eyeOff' : 'eye', _cvvVisible ? 'Сховати' : 'CVV', _cvvVisible) +
-    btn('axToggleFreeze', frozen ? 'unlock' : 'lock', frozen ? 'Розблок.' : 'Блок', frozen) +
-    btn('axCopyNumber', 'copy', 'Номер', false) +
-    btn('axFlipCard', 'flip', 'Фліп', _flipped);
+  $('axActions').innerHTML =
+    btn('axOpenTransfer', 'swap', 'Переказ', false) +
+    btn('axToggleCvv', _cvvId === c.id ? 'eyeOff' : 'eye', _cvvId === c.id ? 'Сховати' : 'CVV', _cvvId === c.id) +
+    btn('axToggleFreeze', c.frozen ? 'unlock' : 'lock', c.frozen ? 'Розблок.' : 'Блок', c.frozen) +
+    btn('axOpenCardSettings', 'sliders', 'Картка', false);
+
+  const txs = txListFor(c);
+  const now = new Date();
+  let mIn = 0, mOut = 0;
+  txs.forEach((t) => {
+    const d = new Date(t.ts || 0);
+    if (t.own || d.getMonth() !== now.getMonth() || d.getFullYear() !== now.getFullYear()) return;
+    if (txDir(t) === 'in') mIn += Math.abs(t.amount || 0); else mOut += Math.abs(t.amount || 0);
+  });
+  $('axMonthName').textContent = now.toLocaleString('uk-UA', { month: 'long' });
+  $('axMonthIn').textContent = '+' + fmt(mIn) + ' ₴';
+  $('axMonthOut').textContent = '−' + fmt(mOut) + ' ₴';
+
+  $('axLinkPanel').classList.toggle('hidden', !c.main);
+  if (c.main) renderLinkPanel();
+  $('axTxList').innerHTML = txs.length ? txs.slice(0, 6).map(txRow).join('') : '<div class="muted">Операцій ще немає</div>';
 }
 
+// ── Дії з карткою ──────────────────────────────────────────────────
+function hideCvv() {
+  if (_cvvTimer) { clearTimeout(_cvvTimer); _cvvTimer = null; }
+  _cvvId = null;
+}
 // CVV живе на звороті — показуючи його, одразу перевертаємо картку.
 function axToggleCvv() {
-  _cvvVisible = !_cvvVisible;
-  if (_cvvVisible) setFlipped(true);
+  const c = selectedCard();
+  if (_cvvId === c.id) { hideCvv(); render(); return; }
+  hideCvv();
+  _cvvId = c.id;
+  _flippedIds[c.id] = true;
+  _cvvTimer = setTimeout(() => { _cvvId = null; _cvvTimer = null; render(); }, 10000);
   render();
-  if (_cvvTimer) { clearTimeout(_cvvTimer); _cvvTimer = null; }
-  if (_cvvVisible) {
-    _cvvTimer = setTimeout(() => { _cvvVisible = false; _cvvTimer = null; render(); }, 10000);
+}
+
+function flipCard(id) {
+  _flippedIds[id] = !_flippedIds[id];
+  askMotionPermission();
+  renderCards();
+}
+
+async function axToggleFreeze() {
+  const c = selectedCard();
+  try {
+    await db.ref('users/' + currentUser + '/' + c.recPath + '/frozen').set(!c.frozen);
+    toast(c.frozen ? 'Картку розблоковано' : 'Картку заблоковано — переказувати з неї не можна', c.frozen ? 'success' : 'info');
+  } catch (e) {
+    console.error(e);
+    toast('Не вдалося змінити стан картки. Спробуйте ще раз.', 'error');
   }
 }
 
+function axCopyNumber(id) {
+  const c = getCard(id || _selId);
+  const num = String((c && c.number) || '').replace(/\s/g, '');
+  if (!/^[0-9]{12,19}$/.test(num)) return;
+  if (!navigator.clipboard) { toast('Копіювання недоступне в цьому браузері', 'error'); return; }
+  navigator.clipboard.writeText(num).then(() => toast('Номер скопійовано', 'success'), () => toast('Не вдалося скопіювати', 'error'));
+}
+
 // ── 3D: фліп + нахил за курсором / гіроскопом ───────────────────────
-function setFlipped(v) {
-  _flipped = !!v;
-  const card = $('axCard');
-  if (!card) return;
-  card.classList.toggle('is-flipped', _flipped);
-  card.setAttribute('aria-pressed', String(_flipped));
-}
-
-function axFlipCard() {
-  setFlipped(!_flipped);
-  askMotionPermission();
-  if (userData) renderActions(!!(userData.virtualCard && userData.virtualCard.frozen));
-}
-
-let _tiltFrame = 0;
-function setTilt(px, py) {
-  const card = $('axCard');
+let _tiltFrame = 0, _tiltStage = null;
+function setTilt(stage, px, py) {
+  const card = stage.querySelector('.card3d');
   px = Math.max(0, Math.min(1, px)); py = Math.max(0, Math.min(1, py));
   cancelAnimationFrame(_tiltFrame);
   _tiltFrame = requestAnimationFrame(() => {
@@ -399,24 +613,29 @@ function setTilt(px, py) {
     card.style.setProperty('--rx', ((0.5 - py) * 20).toFixed(2) + 'deg');
     card.style.setProperty('--gx', (px * 100).toFixed(1) + '%');
     card.style.setProperty('--gy', (py * 100).toFixed(1) + '%');
-    $('axCardStage').style.setProperty('--shadow-x', ((0.5 - px) * 30).toFixed(1));
+    stage.style.setProperty('--shadow-x', ((0.5 - px) * 30).toFixed(1));
     card.classList.add('is-tilting');
   });
 }
-function resetTilt() {
-  const card = $('axCard');
+function resetTilt(stage) {
+  if (!stage) return;
+  const card = stage.querySelector('.card3d');
   cancelAnimationFrame(_tiltFrame);
   card.classList.remove('is-tilting');
   ['--rx', '--ry', '--gx', '--gy'].forEach((p) => card.style.removeProperty(p));
-  $('axCardStage').style.removeProperty('--shadow-x');
+  stage.style.removeProperty('--shadow-x');
 }
-
+function selectedStage() {
+  const s = $('axRail').querySelector('.rail-slide[data-id="' + _selId + '"] .card-stage');
+  return s || null;
+}
 function onDeviceTilt(e) {
   if (e.gamma == null || e.beta == null) return;
+  const stage = selectedStage();
+  if (!stage) return;
   // Телефон зазвичай тримають під ~45° — це і є "рівне" положення.
-  setTilt(0.5 + Math.max(-0.5, Math.min(0.5, e.gamma / 50)), 0.5 + Math.max(-0.5, Math.min(0.5, (e.beta - 45) / 50)));
+  setTilt(stage, 0.5 + Math.max(-0.5, Math.min(0.5, e.gamma / 50)), 0.5 + Math.max(-0.5, Math.min(0.5, (e.beta - 45) / 50)));
 }
-
 // iOS дає гіроскоп лише після явного дозволу з жесту користувача.
 let _motionAsked = false;
 function askMotionPermission() {
@@ -430,53 +649,53 @@ function askMotionPermission() {
   }
 }
 
-function initCard3d() {
-  const card = $('axCard'), stage = $('axCardStage');
-  card.addEventListener('click', axFlipCard);
-  card.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); axFlipCard(); }
+function initCards() {
+  const rail = $('axRail');
+  const activate = (target) => {
+    const slide = target.closest('.rail-slide');
+    if (!slide) return;
+    if (slide.dataset.id === _selId) flipCard(slide.dataset.id);
+    else scrollToCard(slide.dataset.id, true);
+  };
+  rail.addEventListener('click', (e) => { if (e.target.closest('.card3d')) activate(e.target); });
+  rail.addEventListener('keydown', (e) => {
+    if ((e.key === 'Enter' || e.key === ' ') && e.target.closest('.card3d')) { e.preventDefault(); activate(e.target); }
   });
+  rail.addEventListener('scroll', onRailScroll, { passive: true });
+  $('axDots').addEventListener('click', (e) => {
+    const d = e.target.closest('.dot');
+    if (d) scrollToCard(d.dataset.id, true);
+  });
+  window.addEventListener('resize', () => scrollToCard(_selId, false));
+
   if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
-  stage.addEventListener('pointermove', (e) => {
+  rail.addEventListener('pointermove', (e) => {
     if (e.pointerType === 'touch') return;
-    const r = card.getBoundingClientRect();
-    setTilt((e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height);
+    const stage = e.target.closest('.card-stage');
+    if (stage !== _tiltStage) { resetTilt(_tiltStage); _tiltStage = stage; }
+    if (!stage) return;
+    const r = stage.querySelector('.card3d').getBoundingClientRect();
+    setTilt(stage, (e.clientX - r.left) / r.width, (e.clientY - r.top) / r.height);
   });
-  stage.addEventListener('pointerleave', resetTilt);
+  rail.addEventListener('pointerleave', () => { resetTilt(_tiltStage); _tiltStage = null; });
   const DOE = window.DeviceOrientationEvent;
   if (DOE && typeof DOE.requestPermission !== 'function') {
     window.addEventListener('deviceorientation', onDeviceTilt);
   }
 }
 
-function axCopyNumber() {
-  const num = (userData.virtualCard && userData.virtualCard.number || '').replace(/\s/g, '');
-  if (!/^[0-9]{12,19}$/.test(num)) return;
-  if (navigator.clipboard) navigator.clipboard.writeText(num).then(() => toast('Номер скопійовано', 'success'));
-}
-
-async function axToggleFreeze() {
-  const frozen = !!(userData.virtualCard && userData.virtualCard.frozen);
-  try {
-    await db.ref('users/' + currentUser + '/virtualCard/frozen').set(!frozen);
-    toast(frozen ? 'Картку розблоковано' : 'Картку заблоковано — операції недоступні', frozen ? 'success' : 'info');
-  } catch (e) {
-    console.error(e);
-    toast('Не вдалося змінити стан картки. Спробуйте ще раз.', 'error');
-  }
-}
-
-// ── Панель підключення до SlotOK ───────────────────────────────────
+// ── Панель підключення до SlotOK (лише основна картка) ─────────────
 const CODE_TTL = 10 * 60 * 1000;
 
 function renderLinkPanel() {
   const el = $('axLinkBody');
+  if (!el) return;
   const vc = userData.virtualCard || {};
   if (vc.axiomLinked) {
     el.innerHTML =
       '<div class="linked-badge">' + icon('check') + ' Картку підключено до SlotOK</div>' +
-      '<p class="code-hint" style="margin-top:12px;">Баланс і виписка синхронізуються між Аксіомою та SlotOK. ' +
-      'Заморозка діє в обох застосунках.</p>';
+      '<p class="code-hint" style="margin:12px 0 0;">Баланс і виписка синхронізуються між Аксіомою та SlotOK. ' +
+      'Заморозка й денний ліміт діють в обох застосунках.</p>';
     return;
   }
   if (_activeCode && Date.now() - _activeCode.ts < CODE_TTL) {
@@ -513,6 +732,7 @@ async function axGenerateCode() {
 
 function showCode(code, ts) {
   const el = $('axLinkBody');
+  if (!el) return;
   el.innerHTML =
     '<div class="code-box">' +
       '<div class="code-value" aria-label="Код ' + esc(code) + '">' +
@@ -541,8 +761,7 @@ function showCode(code, ts) {
   _codeTimer = setInterval(tick, 1000);
 }
 
-// Слухаємо код: коли SlotOK його спожив (used=true) або зʼявився axiomLinked —
-// оновлюємо панель у реальному часі.
+// Слухаємо код: коли SlotOK його спожив (used=true) — оновлюємо панель.
 function watchLinkCode() {
   db.ref('axiomLinkCodes/' + currentUser).on('value', (snap) => {
     const d = snap.val();
@@ -551,16 +770,25 @@ function watchLinkCode() {
       if (_codeTimer) clearInterval(_codeTimer);
       _activeCode = null;
       db.ref('axiomLinkCodes/' + currentUser).remove().catch((e) => console.error(e));
-      toast('Картку підключено до SlotOK ✅', 'success');
+      toast('Картку підключено до SlotOK', 'success');
       renderLinkPanel();
     }
   });
 }
 
 // ── Виписка ────────────────────────────────────────────────────────
+// Основна картка: users/<nick>/cardTx (спільна зі SlotOK; запис без cardId
+// SlotOK теж вважає належним кожній картці). Додаткові картки й скарбнички:
+// users/<nick>/axiomTx — SlotOK його не показує.
+function txListFor(c) {
+  const src = c.main ? (userData.cardTx || {}) : (userData.axiomTx || {});
+  return Object.values(src)
+    .filter((t) => t && (c.main ? (!t.cardId || t.cardId === 'axiom') : t.acct === c.id))
+    .sort((a, b) => (b.ts || 0) - (a.ts || 0));
+}
+function txDir(t) { return t.dir || ((t.amount || 0) > 0 ? 'in' : 'out'); }
 function txRow(t) {
-  const dir = t.dir || ((t.amount || 0) > 0 ? 'in' : 'out');
-  const isIn = dir === 'in';
+  const isIn = txDir(t) === 'in';
   const date = new Date(t.ts || Date.now()).toLocaleString('uk-UA', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
   const sub = [t.subtitle, date].filter(Boolean).join(' · ');
   return '<div class="tx">' +
@@ -570,26 +798,11 @@ function txRow(t) {
     '<div class="tx-amt ' + (isIn ? 'in' : 'out') + '">' + (isIn ? '+' : '−') + fmt(Math.abs(t.amount || 0)) + ' ₴</div>' +
     '</div>';
 }
-function renderTx() {
-  const el = $('axTxList');
-  db.ref('users/' + currentUser + '/cardTx').limitToLast(8).once('value').then((snap) => {
-    const txs = Object.values(snap.val() || {}).sort((a, b) => (b.ts || 0) - (a.ts || 0));
-    el.innerHTML = txs.length ? txs.slice(0, 8).map(txRow).join('') : '<div class="muted">Операцій ще немає</div>';
-  });
-}
 function axShowAllTx() {
-  db.ref('users/' + currentUser + '/cardTx').limitToLast(100).once('value').then((snap) => {
-    const txs = Object.values(snap.val() || {}).sort((a, b) => (b.ts || 0) - (a.ts || 0));
-    const m = document.createElement('div');
-    m.className = 'modal'; m.id = 'axAllTx';
-    m.addEventListener('click', (e) => { if (e.target === m) m.remove(); });
-    m.innerHTML = '<div class="modal-box" style="padding:20px 0 8px;">' +
-      '<div class="modal-head" style="padding:0 18px;"><div class="modal-title">Повна виписка</div>' +
-      '<button class="icon-btn" onclick="document.getElementById(\'axAllTx\').remove()">' + icon('x') + '</button></div>' +
-      (txs.length ? txs.map(txRow).join('') : '<div class="muted">Операцій ще немає</div>') +
-      '</div>';
-    document.body.appendChild(m);
-  });
+  const c = selectedCard();
+  const txs = txListFor(c).slice(0, 150);
+  openSheet('Операції · ' + c.title + ' ' + digitsTail(c.number),
+    '<div class="sheet-flush">' + (txs.length ? txs.map(txRow).join('') : '<div class="muted">Операцій ще немає</div>') + '</div>');
 }
 
 // ── Автовхід за збереженою сесією ───────────────────────────────────
@@ -597,7 +810,8 @@ function axShowAllTx() {
 // спрацьовує, лише якщо users/<nick>/authUid збігається з anon UID цього
 // браузера (тобто пароль тут уже перевіряли раніше, через axLogin).
 window.addEventListener('DOMContentLoaded', async () => {
-  initCard3d();
+  initCards();
+  if (typeof initBank === 'function') initBank();
   const saved = localStorage.getItem('axioma_nick');
   if (!saved || !db) return;
   try {
