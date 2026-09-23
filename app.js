@@ -329,6 +329,9 @@ async function axLogout() {
   _pendingSelId = null;
   _railSig = '';
   $('axRail').innerHTML = '';
+  _balCardId = null;
+  // Наступний акаунт рахує суми з нуля, а не від чужих.
+  ['axBalance', 'axMonthIn', 'axMonthOut', 'axSavTotal', 'axProfileTotal'].forEach((id) => { $(id)._axNum = undefined; });
   if (typeof closeSheet === 'function') closeSheet();
   if (typeof stopSocial === 'function') stopSocial();
   $('onboardScreen').classList.add('hidden');
@@ -540,7 +543,7 @@ function renderCards() {
     f('holder').forEach((el) => { el.textContent = holder; });
     f('sign').forEach((el) => { el.textContent = holder; });
     f('expiry').forEach((el) => { el.textContent = c.expiry || '••/••'; });
-    f('cvv').forEach((el) => { el.textContent = _cvvId === c.id ? (c.cvv || '•••') : '•••'; });
+    f('cvv').forEach((el) => { el.textContent = _cvvId === c.id ? (c.cvv || '•••') : '•••'; el.parentNode.classList.toggle('is-shown', _cvvId === c.id); });
     const pn = c.main ? partnersOf(userData).map((p) => p.name).join(', ') : '';
     f('badge').forEach((el) => { el.innerHTML = pn ? '<span class="linked-badge">' + icon('check') + ' ' + esc(pn) + '</span>' : ''; });
     f('skin').forEach((el) => { el.style.background = c.skin ? c.skin.bg : ''; });
@@ -588,6 +591,7 @@ function onRailScroll() {
 }
 
 // ── Деталі вибраної картки ─────────────────────────────────────────
+let _balCardId = null; // підсвічуємо зміну суми лише в межах тієї самої картки
 function renderDetails() {
   const c = selectedCard();
   if (!c) return;
@@ -595,7 +599,8 @@ function renderDetails() {
   const st = $('axStatus');
   st.textContent = c.frozen ? 'Заблокована' : 'Активна';
   st.classList.toggle('is-frozen', c.frozen);
-  $('axBalance').textContent = fmt(c.balance);
+  animNum($('axBalance'), c.balance, { flash: _balCardId === c.id });
+  _balCardId = c.id;
   const skinName = c.skin && !c.skin.builtin ? 'Скін «' + c.skin.name + '»' : 'Стандартний дизайн';
   $('axSkinChip').innerHTML =
     '<span class="skin-dot" style="background:' + esc(c.skin ? c.skin.dot : 'linear-gradient(135deg,#6b5cff,#c06bff)') + '"></span>' +
@@ -618,12 +623,12 @@ function renderDetails() {
     if (txDir(t) === 'in') mIn += Math.abs(t.amount || 0); else mOut += Math.abs(t.amount || 0);
   });
   $('axMonthName').textContent = now.toLocaleString('uk-UA', { month: 'long' });
-  $('axMonthIn').textContent = '+' + fmt(mIn) + ' ₴';
-  $('axMonthOut').textContent = '−' + fmt(mOut) + ' ₴';
+  animNum($('axMonthIn'), mIn, { prefix: '+', suffix: ' ₴', flash: false });
+  animNum($('axMonthOut'), mOut, { prefix: '−', suffix: ' ₴', flash: false });
 
   $('axLinkPanel').classList.toggle('hidden', !c.main);
   if (c.main) renderLinkPanel();
-  $('axTxList').innerHTML = txs.length ? txs.slice(0, 6).map(txRow).join('') : '<div class="muted">Операцій ще немає</div>';
+  setListHtml($('axTxList'), txs.length ? txs.slice(0, 6).map(txRow).join('') : '<div class="muted">Операцій ще немає</div>');
 }
 
 // ── Дії з карткою ──────────────────────────────────────────────────

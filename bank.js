@@ -11,10 +11,11 @@ function setTab(tab) {
   if (['cards', 'savings', 'more'].indexOf(tab) < 0) tab = 'cards';
   _tab = tab;
   document.querySelectorAll('.view').forEach((v) => v.classList.toggle('hidden', v.dataset.view !== tab));
-  document.querySelectorAll('.tab').forEach((b) => {
+  document.querySelectorAll('.tab').forEach((b, i) => {
     const on = b.dataset.tab === tab;
     b.classList.toggle('is-on', on);
     b.setAttribute('aria-selected', String(on));
+    if (on) b.parentNode.style.setProperty('--ti', i);
   });
   window.scrollTo(0, 0);
   if (tab === 'cards') requestAnimationFrame(() => scrollToCard(_selId, false));
@@ -38,6 +39,7 @@ function openSheet(title, bodyHtml) {
   m.addEventListener('click', (e) => { if (e.target === m || e.target.closest('[data-close]')) closeSheet(); });
   document.body.appendChild(m);
   document.body.classList.add('has-sheet');
+  animCounters(m);
   const first = m.querySelector('input, select, .sheet-body button');
   if (first && window.matchMedia('(hover: hover)').matches) first.focus();
   return m;
@@ -45,7 +47,16 @@ function openSheet(title, bodyHtml) {
 function closeSheet() {
   const m = $('axSheet');
   if (!m) return;
-  m.remove();
+  // Шторка ще доїжджає вниз, а нова вже може відкриватися — знімаємо id,
+  // щоб $() не знаходив поля старої.
+  m.removeAttribute('id');
+  m.querySelectorAll('[id]').forEach((el) => el.removeAttribute('id'));
+  if (reducedMotion()) m.remove();
+  else {
+    m.classList.add('is-closing');
+    m.addEventListener('animationend', (e) => { if (e.target === m) m.remove(); });
+    setTimeout(() => m.remove(), 400);
+  }
   document.body.classList.remove('has-sheet');
   if (_sheetReturnFocus && _sheetReturnFocus.focus) _sheetReturnFocus.focus();
   _sheetReturnFocus = null;
@@ -496,11 +507,11 @@ function pickSkinPhoto(cardId) {
 // ═══════════════════════════════════════════════════════════════════
 // ЗАОЩАДЖЕННЯ — скарбнички
 // ═══════════════════════════════════════════════════════════════════
-function ringSvg(pct, color) {
+function ringSvg(pct, color, id) {
   const r = 17, c = 2 * Math.PI * r, off = c * (1 - Math.max(0, Math.min(1, pct)));
   return '<svg class="ring" viewBox="0 0 42 42" aria-hidden="true">' +
     '<circle cx="21" cy="21" r="' + r + '" fill="none" stroke="var(--surface-3)" stroke-width="4"/>' +
-    '<circle cx="21" cy="21" r="' + r + '" fill="none" stroke="' + color + '" stroke-width="4" stroke-linecap="round" ' +
+    '<circle class="ring-fg"' + (id ? ' data-id="' + id + '"' : '') + ' cx="21" cy="21" r="' + r + '" fill="none" stroke="' + color + '" stroke-width="4" stroke-linecap="round" ' +
       'stroke-dasharray="' + c.toFixed(2) + '" stroke-dashoffset="' + off.toFixed(2) + '" transform="rotate(-90 21 21)"/>' +
   '</svg>';
 }
@@ -508,31 +519,32 @@ function ringSvg(pct, color) {
 function renderSavings() {
   const jars = getJars();
   const total = jars.reduce((s, j) => s + j.balance, 0);
-  $('axSavTotal').textContent = fmt(total);
+  animNum($('axSavTotal'), total);
   $('axSavCount').textContent = jars.length
     ? jars.length + ' ' + plural(jars.length, 'скарбничка', 'скарбнички', 'скарбничок')
     : 'Поки жодної скарбнички';
   const list = $('axJarList');
   if (!jars.length) {
-    list.innerHTML =
+    setListHtml(list,
       '<div class="empty is-card">' +
         '<div class="empty-ic">' + icon('piggy') + '</div>' +
         '<p>Відкладай на ціль окремо від ігрового балансу</p>' +
         '<p class="empty-sub">Скарбничка — окремий рахунок: гроші в ній не витратяться випадково в грі. Відсотки не нараховуються.</p>' +
         '<button class="btn btn-primary" onclick="openNewJar()">Створити скарбничку</button>' +
-      '</div>';
+      '</div>');
     return;
   }
-  list.innerHTML = jars.map((j) => {
+  const html = jars.map((j) => {
     const pct = j.goal ? j.balance / j.goal : 0;
     return '<button class="jar" onclick="openJar(\'' + j.id + '\')">' +
-      '<span class="jar-ring">' + ringSvg(j.goal ? pct : 1, j.goal ? j.color : 'color-mix(in srgb, ' + j.color + ' 40%, transparent)') +
+      '<span class="jar-ring">' + ringSvg(j.goal ? pct : 1, j.goal ? j.color : 'color-mix(in srgb, ' + j.color + ' 40%, transparent)', j.id) +
         '<span class="jar-dot" style="background:' + j.color + '"></span></span>' +
       '<span class="jar-main"><span class="jar-name">' + esc(j.name) + '</span>' +
         '<span class="jar-sub">' + (j.goal ? 'Ціль ' + fmt(j.goal) + ' ₴ · ' + Math.min(999, Math.floor(pct * 100)) + '%' : 'Без цілі') + '</span></span>' +
       '<span class="jar-amt">' + fmt(j.balance) + ' ₴</span>' +
     '</button>';
   }).join('');
+  if (setListHtml(list, html)) animRings(list);
 }
 
 function plural(n, one, few, many) {
@@ -596,7 +608,7 @@ function openJar(id) {
   const pct = j.goal ? Math.min(1, j.balance / j.goal) : 0;
   const m = openSheet(j.name,
     '<div class="jar-hero">' +
-      '<div class="jar-hero-amt">' + fmt(j.balance) + '<span class="cur">₴</span></div>' +
+      '<div class="jar-hero-amt"><span data-count="' + j.balance + '">' + fmt(j.balance) + '</span><span class="cur">₴</span></div>' +
       (j.goal
         ? '<div class="bar"><span style="width:' + (pct * 100).toFixed(1) + '%;background:' + j.color + '"></span></div>' +
           '<div class="jar-hero-sub">' + (j.balance >= j.goal ? 'Ціль досягнуто' : 'Ще ' + fmt(j.goal - j.balance) + ' ₴ до цілі ' + fmt(j.goal) + ' ₴') + '</div>'
@@ -654,7 +666,7 @@ function renderMore() {
   $('axMoreRef').textContent = refCount ? refCount + ' ' + plural(refCount, 'друг', 'друзі', 'друзів') : '+' + REF_BONUS + ' ₴';
   $('axProfileSub').textContent = cards.length + ' ' + plural(cards.length, 'картка', 'картки', 'карток') +
     ' · ' + jars.length + ' ' + plural(jars.length, 'скарбничка', 'скарбнички', 'скарбничок');
-  $('axProfileTotal').textContent = fmt(total) + ' ₴';
+  animNum($('axProfileTotal'), total, { suffix: ' ₴' });
   const vc = (userData.cards && userData.cards.main) || {};
   $('axMoreLimit').textContent = Number(vc.dayLimit) > 0 ? fmt(vc.dayLimit) + ' ₴' : 'Без ліміту';
   const parts = partnersOf(userData);
@@ -746,7 +758,7 @@ function openAbout() {
     '<p class="sheet-lead">Аксіома — ігровий симулятор банку для кількох проєктів. Це не банк і не фінансова установа: усі кошти віртуальні. ' +
       'Свій акаунт і картки; проєкти-партнери, як SlotOK, підключаються до основної картки через вхід в акаунт Аксіоми.</p>' +
     '<button class="btn btn-quiet btn-block" onclick="openRules()">Правила й політика</button>' +
-    '<div class="req" style="margin-top:14px"><div class="req-row"><span>Версія</span><b>5.0</b></div>' +
+    '<div class="req" style="margin-top:14px"><div class="req-row"><span>Версія</span><b>5.1</b></div>' +
       '<div class="req-row"><span>Партнери</span><b>' + esc(Object.values(PARTNER_NAMES).join(', ')) + '</b></div></div>');
 }
 

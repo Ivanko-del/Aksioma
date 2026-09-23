@@ -422,7 +422,7 @@ function openReferral() {
   const earned = Object.keys(paid).length * REF_BONUS;
   const m = openSheet('Запроси друга',
     '<div class="ref-hero">' +
-      '<div class="ref-big">+' + REF_BONUS + ' ₴</div>' +
+      '<div class="ref-big" data-count="' + REF_BONUS + '" data-prefix="+" data-suffix=" ₴">+' + REF_BONUS + ' ₴</div>' +
       '<p>на основну картку за кожного друга, який створить новий акаунт Аксіоми й вкаже твій нік</p>' +
     '</div>' +
     '<div class="req">' +
@@ -433,7 +433,7 @@ function openReferral() {
     '</div>' +
     '<div class="ref-stats">' +
       '<div><b>' + friends.length + '</b><span>запрошено</span></div>' +
-      '<div><b>' + fmt(earned) + ' ₴</b><span>отримано</span></div>' +
+      '<div><b data-count="' + earned + '" data-suffix=" ₴">' + fmt(earned) + ' ₴</b><span>отримано</span></div>' +
       '<div><b>' + Math.max(0, REF_MAX - Object.keys(paid).length) + '</b><span>ще можна</span></div>' +
     '</div>' +
     '<p class="form-note">Рахується новий акаунт Аксіоми (до 7 днів), у якому друг вказав твій нік. Бонус — віртуальні ₴.</p>' +
