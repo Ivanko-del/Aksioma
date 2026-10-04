@@ -19,8 +19,13 @@
         "createdAt": {
           ".validate": "(!data.exists() && newData.val() === now) || data.val() === newData.val()"
         },
+        "devices": {
+          ".read": false,
+          ".write": false
+        },
         "cards": {
           "$card": {
+            ".validate": "!newData.exists() || newData.child('balance').val() === data.child('balance').val() || (!data.exists() && newData.child('balance').val() === 0)",
             "balance": {
               ".validate": "newData.isNumber() && newData.val() >= 0"
             }
@@ -28,6 +33,7 @@
         },
         "savings": {
           "$jar": {
+            ".validate": "!newData.exists() || newData.child('balance').val() === data.child('balance').val() || (!data.exists() && newData.child('balance').val() === 0)",
             "balance": {
               ".validate": "newData.isNumber() && newData.val() >= 0"
             }
@@ -53,8 +59,7 @@
       "$uid": {
         ".read": "auth != null && auth.uid === $uid",
         "$id": {
-          ".write": "auth != null && ((!data.exists() && newData.exists()) || (auth.uid === $uid && !newData.exists()))",
-          ".validate": "!newData.exists() || (newData.child('amount').isNumber() && newData.child('amount').val() > 0 && auth.token.email === newData.child('fromHandle').val() + '@axioma-bank.firebaseapp.com')"
+          ".write": false
         }
       }
     },
@@ -64,6 +69,12 @@
         "$h": {
           ".write": "auth != null && !data.exists() && newData.exists() && auth.token.email === $h + '@axioma-bank.firebaseapp.com' && root.child('users').child(auth.uid).child('profile').child('invitedBy').val() === $inviter && root.child('users').child(auth.uid).child('createdAt').val() > now - 604800000"
         }
+      }
+    },
+    "pendingOps": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": false
       }
     }
   }

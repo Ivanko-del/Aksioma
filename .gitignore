@@ -1,3 +1,18 @@
 node_modules/
 .vercel/
 .DS_Store
+secrets/
+www/
+*.keystore
+keystore.properties
+*.apk
+worker/.dev.vars
+worker/wrangler.toml.bak
+
+# Capacitor Android: тримаємо наш нативний код (src/), ігноруємо генероване
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/app/src/main/assets/public/
+android/capacitor-cordova-android-plugins/

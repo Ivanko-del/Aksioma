@@ -18,6 +18,9 @@
 (function (root) {
   'use strict';
 
+  const WORKER_URL = 'https://aksioma-worker.ivankolodeev2.workers.dev';
+  const OP_WAIT_MARGIN_MS = 3000;
+
   const CONFIG = {
     apiKey:            "AIzaSyANB_QQ4V62gbbly0hXgDTX1YTMButPEg4",
     authDomain:        "axioma-bank.firebaseapp.com",
@@ -144,6 +147,43 @@
 
   function requireAuth() { if (!uid) throw fail('Спершу увійди в акаунт Аксіоми'); }
 
+  // Зміну балансу виконує лише Cloudflare Worker (правила бази забороняють
+  // клієнту писати в balance напряму) — SDK лише просить операцію й чекає
+  // підтвердження, якщо воно потрібне (списання з картки гравця).
+  async function callWorker(path, body) {
+    const res = await fetch(WORKER_URL + path, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    }).catch(() => { throw fail('Немає звʼязку з Аксіомою'); });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw fail(data.error || 'Помилка сервера Аксіоми');
+    return data;
+  }
+  async function requestOp(type, payload) {
+    const idToken = await auth.currentUser.getIdToken();
+    const res = await callWorker('/request-op', { idToken: idToken, type: type, payload: payload });
+    if (res.status === 'done') return true;
+    if (res.status === 'failed') throw fail(res.error || 'Операція не виконана');
+    return new Promise((resolve, reject) => {
+      const ref = db.ref('pendingOps/' + uid + '/' + res.opId);
+      let settled = false;
+      const finish = (fn, arg) => { if (settled) return; settled = true; ref.off('value', cb); fn(arg); };
+      const timer = setTimeout(
+        () => finish(reject, fail('Час на підтвердження вийшов')),
+        Math.max(1000, res.expiresAt - Date.now() + OP_WAIT_MARGIN_MS)
+      );
+      function cb(snap) {
+        const v = snap.val();
+        if (!v || v.status === 'pending') return;
+        clearTimeout(timer);
+        if (v.status === 'done') finish(resolve, true);
+        else if (v.status === 'declined') finish(reject, fail('Гравець відхилив списання в застосунку'));
+        else if (v.status === 'expired') finish(reject, fail('Час на підтвердження вийшов'));
+        else finish(reject, fail(v.errorMsg || 'Операція не виконана'));
+      }
+      ref.on('value', cb);
+    });
+  }
+
   async function link(projectId, projectUser) {
     requireAuth();
     await db.ref('users/' + uid + '/partners/' + projectId).set({ user: String(projectUser || ''), linkedAt: firebase.database.ServerValue.TIMESTAMP });
@@ -153,14 +193,9 @@
     await db.ref('users/' + uid + '/partners/' + projectId).remove();
   }
 
-  function logTx(dir, amount, o) {
-    return db.ref('users/' + uid + '/tx').push({
-      acct: 'main', dir: dir, amount: amount, title: String(o.title || '').slice(0, 80),
-      subtitle: String(o.subtitle || o.project || '').slice(0, 80), partner: String(o.project || ''), ts: Date.now(),
-    }).catch((e) => console.error('AxiomaSDK tx:', e));
-  }
-
-  // Списати з основної картки (гра поповнюється з картки).
+  // Списати з основної картки (гра поповнюється з картки). Гравець має
+  // підтвердити списання пушем у застосунку Аксіоми — проміс резолвиться
+  // лише після цього (до ~2 хв), тож покажи в себе стан очікування.
   async function withdrawFromCard(amount, o) {
     o = o || {};
     requireAuth();
@@ -170,29 +205,19 @@
     if (!card) throw fail('Картку Аксіоми ще не випущено — відкрий Аксіому');
     if (card.frozen) throw fail('Картку Аксіоми заблоковано');
     if (amount > limitLeft(card)) throw fail('Денний ліміт картки: сьогодні лишилось ' + limitLeft(card) + ' ₴');
-    const res = await db.ref('users/' + uid + '/cards/main/balance').transaction((cur) => {
-      const v = Number(cur) || 0;
-      if (v + 1e-9 < amount) return;
-      return round2(v - amount);
-    }, undefined, false);
-    if (!res.committed) throw fail('Недостатньо коштів на картці Аксіоми');
-    if (Number(card.dayLimit) > 0) {
-      const spent = (card.dayKey === dayKey() ? (Number(card.daySpent) || 0) : 0) + amount;
-      db.ref('users/' + uid + '/cards/main').update({ dayKey: dayKey(), daySpent: round2(spent) }).catch((e) => console.error(e));
-    }
-    logTx('out', amount, o);
+    await requestOp('sdk-withdraw', { amount: amount, project: o.project || '', title: o.title || '' });
     return true;
   }
 
-  // Зарахувати на основну картку (виведення з гри або повернення).
+  // Зарахувати на основну картку (виведення з гри або повернення). Без
+  // підтвердження — гроші лише надходять, ризику для гравця немає.
   async function depositToCard(amount, o) {
     o = o || {};
     requireAuth();
     amount = round2(Number(amount) || 0);
     if (!(amount > 0)) throw fail('Некоректна сума');
     if (!card) throw fail('Картку Аксіоми ще не випущено — відкрий Аксіому');
-    await db.ref('users/' + uid + '/cards/main/balance').set(firebase.database.ServerValue.increment(amount));
-    logTx('in', amount, o);
+    await requestOp('sdk-deposit', { amount: amount, project: o.project || '', title: o.title || '' });
     return true;
   }
 

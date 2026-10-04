@@ -1,0 +1,30 @@
+{
+  "name": "aksioma",
+  "version": "1.0.0",
+  "description": "",
+  "main": "app.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "sync:www": "node scripts/sync-www.js",
+    "android:build": "npm run sync:www && npx cap sync android && cd android && ./gradlew assembleRelease"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Ivanko-del/Aksioma.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/Ivanko-del/Aksioma/issues"
+  },
+  "homepage": "https://github.com/Ivanko-del/Aksioma#readme",
+  "devDependencies": {
+    "@capacitor/android": "^8.5.2",
+    "@capacitor/cli": "^8.5.2",
+    "@capacitor/core": "^8.5.2",
+    "@capacitor/preferences": "^8.0.1",
+    "@capacitor/push-notifications": "^8.1.3"
+  }
+}

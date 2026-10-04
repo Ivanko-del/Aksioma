@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "645185578160",
+    "firebase_url": "https://axioma-bank-default-rtdb.firebaseio.com",
+    "project_id": "axioma-bank",
+    "storage_bucket": "axioma-bank.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:645185578160:android:018a3f6e5b046087dd8775",
+        "android_client_info": {
+          "package_name": "com.aksioma.bank"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCLRaM1XOOm9-JZYCX_wPVdPX6SCWBeTNc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

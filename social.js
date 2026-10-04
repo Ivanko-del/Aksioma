@@ -227,7 +227,7 @@ function openP2P(prefill) {
       const r = await resolveCard(digits);
       if (seq !== lookupSeq) return;
       if (!r) { who.innerHTML = '<span class="is-err">Картку Аксіоми з таким номером не знайдено</span>'; return; }
-      recipient = r;
+      recipient = Object.assign(r, { number: digits });
       who.innerHTML = '<span class="avatar avatar-xs">' + esc((r.name || r.nick).charAt(0).toUpperCase()) + '</span>' +
         '<span><b>' + esc(r.name || 'Без імені') + '</b><small>@' + esc(r.nick) + (r.card === 'main' ? '' : ' · додаткова картка') + '</small></span>';
       refreshBtn();
@@ -270,38 +270,15 @@ async function sendToPlayer(cardId, r, amount, note) {
   if (amount > from.balance + 1e-9) { toast('Недостатньо коштів: доступно ' + fmt(from.balance) + ' ₴', 'error'); return false; }
 
   _sending = true;
-  const base = 'users/' + currentUid + '/';
-  let debited = false;
   try {
-    const res = await db.ref(base + from.balPath).transaction((cur) => {
-      const v = Number(cur) || 0;
-      if (v + 1e-9 < amount) return;
-      return round2(v - amount);
-    }, undefined, false);
-    if (!res.committed) { toast('Недостатньо коштів', 'error'); return false; }
-    debited = true;
-    await db.ref('inbox/' + r.uid).push({
-      fromHandle: handleOf(currentUser), fromName: displayNameOf(userData.profile) || currentUser,
-      amount: amount, note: note || '', card: r.card, ts: firebase.database.ServerValue.TIMESTAMP,
+    await requestOp('p2p-transfer', {
+      fromCardId: cardId, toCardNumber: r.number, amount: amount, note: note || '',
+      toName: r.name || ('@' + r.nick),
     });
-    debited = false;
-    if (from.main) noteMainSpend(amount);
-    pushTx(from.id, { dir: 'out', amount: amount, title: 'Переказ: ' + (r.name || '@' + r.nick), subtitle: note || ('@' + r.nick), p2p: true })
-      .catch((e) => console.error('p2p log:', e));
     return true;
   } catch (e) {
     console.error(e);
-    if (debited) {
-      try {
-        await db.ref(base + from.balPath).set(firebase.database.ServerValue.increment(amount));
-        toast('Переказ не пройшов — гроші повернули на картку', 'error');
-      } catch (e2) {
-        console.error('refund failed:', e2);
-        toast('Переказ перервався. Якщо сума зникла — напиши в підтримку', 'error');
-      }
-    } else {
-      toast('Не вдалося переказати. Перевір зʼєднання й спробуй ще раз', 'error');
-    }
+    toast(e.message || 'Не вдалося переказати. Перевір зʼєднання й спробуй ще раз', 'error');
     return false;
   } finally {
     _sending = false;
@@ -334,20 +311,14 @@ async function claimInbox(items) {
       const it = items[id];
       const amount = round2(Number(it && it.amount) || 0);
       if (!(amount > 0) || uid !== currentUid) continue;
-      const res = await db.ref('inbox/' + uid + '/' + id).transaction((cur) => (cur ? null : undefined), undefined, false);
-      if (!res.committed) continue;
-      const card = it.card && getCard(String(it.card)) ? String(it.card) : 'main';
       try {
-        await db.ref('users/' + uid + '/cards/' + card + '/balance').set(firebase.database.ServerValue.increment(amount));
+        await requestOp('claim-inbox', { inboxId: id });
       } catch (e) {
         console.error('inbox credit:', e);
-        db.ref('inbox/' + uid + '/' + id).set(it).catch((e2) => console.error('inbox restore:', e2));
         continue;
       }
       const fromNick = nickFromHandle(it.fromHandle);
       const who = String(it.fromName || fromNick || '').slice(0, 40);
-      pushTx(card, { dir: 'in', amount: amount, title: 'Переказ від ' + who, subtitle: String(it.note || ('@' + fromNick)).slice(0, 60), p2p: true })
-        .catch((e) => console.error(e));
       got += amount; last = who;
     }
   } finally {
@@ -388,21 +359,13 @@ function refPaid() { return (userData && userData.refPaid) || {}; }
 
 async function claimReferralBonuses() {
   if (_claiming || !userData || !userData.profile) return;
-  const uid = currentUid;
   const todo = Object.keys(_refs).filter((h) => /^[a-z2-7]{1,64}$/.test(h) && h !== handleOf(currentUser) && !refPaid()[h]);
   if (!todo.length) return;
   _claiming = true;
   let got = 0;
   try {
-    for (const h of todo) {
-      if (Object.keys(refPaid()).length >= REF_MAX || uid !== currentUid) break;
-      const res = await db.ref('users/' + uid + '/refPaid/' + h).transaction((cur) => (cur ? undefined : Date.now()), undefined, false);
-      if (!res.committed) continue;
-      await db.ref('users/' + uid + '/cards/main/balance').set(firebase.database.ServerValue.increment(REF_BONUS));
-      pushTx('main', { dir: 'in', amount: REF_BONUS, title: 'Бонус за друга: @' + nickFromHandle(h), subtitle: 'Реферальна програма', ref: true })
-        .catch((e) => console.error(e));
-      got += REF_BONUS;
-    }
+    await requestOp('claim-referrals', {});
+    got = todo.length * REF_BONUS; // точну суму синхронізує подальше оновлення userData
   } catch (e) {
     console.error('referral claim:', e);
   } finally {

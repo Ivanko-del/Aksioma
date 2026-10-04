@@ -528,6 +528,15 @@ body.has-sheet { overflow: hidden; }
 .sheet-section { margin-top: 18px; }
 .sheet-sub { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--fg-3); margin-bottom: 8px; }
 .sheet-flush { margin: 0 -18px; border-top: 1px solid var(--line); }
+.waiting-op { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 18px 8px 10px; gap: 4px; }
+.waiting-op p { margin: 0 0 4px; font-size: 14px; }
+.waiting-spinner {
+  width: 40px; height: 40px; margin-bottom: 10px; border-radius: 50%;
+  border: 3px solid var(--line-2); border-top-color: var(--brand);
+  animation: axSpin .8s linear infinite;
+}
+@keyframes axSpin { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .waiting-spinner { animation: none; } }
 @media (min-width: 560px) {
   .sheet-backdrop { align-items: center; }
   .sheet { border-radius: 26px; border-bottom: 1px solid var(--line-2); }

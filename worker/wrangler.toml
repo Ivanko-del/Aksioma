@@ -1,0 +1,11 @@
+name = "aksioma-worker"
+main = "src/index.js"
+compatibility_date = "2024-11-01"
+
+[vars]
+FIREBASE_PROJECT_ID = "axioma-bank"
+FIREBASE_DB_URL = "https://axioma-bank-default-rtdb.firebaseio.com"
+
+# Секрети (НЕ сюди — задаються окремо через `wrangler secret put`):
+#   FIREBASE_CLIENT_EMAIL
+#   FIREBASE_PRIVATE_KEY

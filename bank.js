@@ -132,14 +132,8 @@ function parseAmount(v) {
   return Number.isFinite(n) ? round2(n) : NaN;
 }
 
-// own: переказ між власними рахунками — у підсумках місяця не рахується.
-function logMove(acc, dir, amount, title) {
-  return pushTx(acc.kind === 'jar' ? 'jar:' + acc.id : acc.id, { dir: dir, amount: amount, title: title, subtitle: 'Між своїми рахунками', own: true });
-}
-
-// Списання — транзакцією (гроші не підуть у мінус, навіть якщо проєкт-партнер
-// саме зараз списує з картки), зарахування — атомарним increment. Якщо зарахування не пройшло,
-// повертаємо списане тим самим increment'ом.
+// Саму зміну балансу виконує Cloudflare Worker (клієнту правила бази
+// цього більше не дозволяють) — тут лише швидка перевірка для UX і виклик.
 let _moving = false;
 async function moveMoney(fromKey, toKey, amount) {
   if (_moving) return false;
@@ -155,37 +149,12 @@ async function moveMoney(fromKey, toKey, amount) {
   if (amount > from.balance + 1e-9) { toast('Недостатньо коштів: доступно ' + fmt(from.balance) + ' ₴', 'error'); return false; }
 
   _moving = true;
-  const base = 'users/' + currentUid + '/';
-  let debited = false;
   try {
-    const res = await db.ref(base + from.balPath).transaction((cur) => {
-      const v = Number(cur) || 0;
-      if (v + 1e-9 < amount) return; // скасувати: грошей уже менше
-      return round2(v - amount);
-    }, undefined, false);
-    if (!res.committed) { toast('Недостатньо коштів', 'error'); return false; }
-    debited = true;
-    await db.ref(base + to.balPath).set(firebase.database.ServerValue.increment(amount));
-    debited = false;
-    if (from.main) noteMainSpend(amount);
-    Promise.all([
-      logMove(from, 'out', amount, 'Переказ → ' + to.short),
-      logMove(to, 'in', amount, 'Переказ ← ' + from.short),
-    ]).catch((e) => console.error('tx log failed:', e));
+    await requestOp('own-transfer', { fromKey: fromKey, toKey: toKey, amount: amount });
     return true;
   } catch (e) {
     console.error(e);
-    if (debited) {
-      try {
-        await db.ref(base + from.balPath).set(firebase.database.ServerValue.increment(amount));
-        toast('Переказ не пройшов — гроші повернули на рахунок', 'error');
-      } catch (e2) {
-        console.error('refund failed:', e2);
-        toast('Переказ перервався. Якщо сума зникла — напиши в підтримку', 'error');
-      }
-    } else {
-      toast('Не вдалося переказати. Перевір зʼєднання й спробуй ще раз', 'error');
-    }
+    toast(e.message || 'Не вдалося переказати. Перевір зʼєднання й спробуй ще раз', 'error');
     return false;
   } finally {
     _moving = false;
