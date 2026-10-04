@@ -431,6 +431,25 @@ input:focus { border-color: var(--brand); background: var(--surface-3); box-shad
 .toast.is-error { border-color: rgba(255,92,122,.5); }
 .toast.is-success { border-color: rgba(61,220,151,.5); }
 
+/* Банер «встанови застосунок» */
+.install-banner {
+  position: fixed; left: 12px; right: 12px; bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+  display: flex; align-items: center; gap: 12px;
+  background: var(--surface-2); border: 1px solid var(--line-2); border-radius: var(--r-lg);
+  padding: 12px 12px 12px 14px; z-index: 180; box-shadow: 0 16px 40px -14px rgba(0,0,0,.65);
+  animation: fadeUp .5s var(--ease-out) both;
+}
+.install-banner.hidden { display: none; }
+.install-banner-text { flex: 1; min-width: 0; }
+.install-banner-title { font-size: 14px; font-weight: 600; color: var(--fg); }
+.install-banner-sub { font-size: 12.5px; color: var(--fg-3); margin-top: 1px; }
+.install-banner .btn { padding: 10px 16px; font-size: 14px; white-space: nowrap; }
+.install-banner-close { flex: none; width: 30px; height: 30px; border-radius: 10px; font-size: 13px; }
+
+@media (min-width: 480px) {
+  .install-banner { left: auto; right: 20px; bottom: 20px; width: 420px; }
+}
+
 @media (max-width: 360px) {
   .actions { gap: 6px; }
   .action-btn span { font-size: 11px; }

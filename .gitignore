@@ -6,6 +6,8 @@ www/
 *.keystore
 keystore.properties
 *.apk
+# Підписаний release-білд у корені навмисно трекаємо — його качає банер «встанови застосунок»
+!/Aksioma.apk
 worker/.dev.vars
 worker/wrangler.toml.bak
 

@@ -6,6 +6,17 @@
   <meta name="theme-color" content="#0a0b11">
   <title>Аксіома Банк</title>
 
+  <!-- PWA: встановлення на телефон/десктоп -->
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16.png">
+  <link rel="icon" href="icons/favicon.ico">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Аксіома">
+  <meta name="mobile-web-app-capable" content="yes">
+
   <!-- Firebase «axioma-bank» (своя база й акаунти) + читання бази SlotOK для перенесення гравців -->
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
   <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
@@ -20,6 +31,17 @@
 
   <!-- Заставка, поки Firebase визначає сесію (прибирає motion.js) -->
   <div id="bootSplash" class="boot" aria-hidden="true"><div class="brand-mark">А</div></div>
+
+  <!-- Банер «встанови застосунок» — пропонує APK на Android, PWA-встановлення деінде -->
+  <div id="installBanner" class="install-banner hidden">
+    <div class="brand-mark brand-mark-sm">А</div>
+    <div class="install-banner-text">
+      <div class="install-banner-title">Встанови застосунок Аксіома</div>
+      <div class="install-banner-sub" id="installBannerSub">Швидший запуск і пуш-сповіщення</div>
+    </div>
+    <button class="btn btn-primary" id="installBannerBtn">Встановити</button>
+    <button class="icon-btn install-banner-close" id="installBannerClose" aria-label="Закрити">✕</button>
+  </div>
 
   <!-- ══════════════ ВХІД / РЕЄСТРАЦІЯ ══════════════ -->
   <div id="authScreen" class="auth-wrap hidden">
@@ -234,5 +256,13 @@
   <script src="social.js"></script>
   <script src="motion.js"></script>
   <script src="push.js"></script>
+  <script src="install-banner.js"></script>
+  <script>
+    // Лише на сайті — не в нативному Android-додатку (там файли вже локальні,
+    // а кеш service worker-а заважав би оновленню застосунку).
+    if ('serviceWorker' in navigator && !window.Capacitor) {
+      window.addEventListener('load', () => navigator.serviceWorker.register('sw.js'));
+    }
+  </script>
 </body>
 </html>
